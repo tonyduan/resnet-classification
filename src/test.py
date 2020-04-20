@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     results = {
         "preds": np.zeros((len(test_dataset), get_num_labels(args.dataset))),
-        "labels": np.zeros(len(test_dataset)),
+        "labels": np.zeros(len(test_dataset), dtype=np.long),
         "preds_nll": np.zeros(len(test_dataset)),
         "cams": np.zeros((len(test_dataset), 8, 8)),
     }

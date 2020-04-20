@@ -3,8 +3,8 @@ from matplotlib import pyplot as plt
 from argparse import ArgumentParser
 from pathlib import Path
 from tqdm import tqdm
+from sklearn.metrics import average_precision_score
 from src.datasets import *
-
 
 
 if __name__ == "__main__": 
@@ -20,8 +20,14 @@ if __name__ == "__main__":
     cams = np.load(f"ckpts/{args.experiment_name}/cams.npy")
     test_dataset = get_dataset(args.dataset, "test", precision="float")
     label_names = get_label_names("cifar")
+    labels_one_hot = np.eye(get_num_labels(args.dataset))[labels]
 
     print("== Accuracy:", np.mean(np.argmax(preds, axis=1) == labels))
+    print("== Macro-averaged AUPRC:", average_precision_score(labels_one_hot, preds, "macro"))
+    print("== Micro-averaged AUPRC:", average_precision_score(labels_one_hot, preds, "micro"))
+    print("== Per-class AUPRCs:")
+    for label_id, label_name in enumerate(label_names):
+        print(f"  {label_name}:", average_precision_score(labels == label_id, preds[:, label_id]))
     print("== Saving examples...")
 
     plt.figure(figsize=(8, 4))

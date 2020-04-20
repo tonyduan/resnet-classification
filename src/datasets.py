@@ -1,7 +1,6 @@
 import torch
 import random
 from torchvision import datasets, transforms
-from src.lib.zipdata import ZipData
 
 
 class PrecisionTransform(object):
