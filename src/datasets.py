@@ -19,8 +19,6 @@ class PrecisionTransform(object):
 
 
 def get_dim(name):
-    if name == "imagenet":
-        return 3 * 224 * 224
     if name == "cifar":
         return 3 * 32 * 32
     if name == "svhn":
@@ -31,7 +29,13 @@ def get_dim(name):
         return 28 * 28
 
 def get_num_labels(name):
-    return 1000 if name == "imagenet" else 10
+    return 10
+
+def get_label_names(name):
+    if name == "cifar":
+        return ["airplane", "automobile", "bird", "cat", "deer", 
+                "dog", "frog", "horse", "ship", "truck"]
+    raise ValueError
 
 def get_normalization_shape(name):
     if name == "imagenet":
@@ -72,22 +76,6 @@ def get_dataset(name, split, precision):
         return datasets.CIFAR10("./data/cifar_10", train=False, download=True,
                                 transform=transforms.Compose([transforms.ToTensor(),
                                                               precision_transform]))
-
-    if name == "imagenet" and split == "train":
-        return ZipData("/mnt/imagenet/train.zip",
-					   "/mnt/imagenet/train_map.txt",
-                       transforms.Compose([transforms.RandomResizedCrop(224),
-                                           transforms.RandomHorizontalFlip(),
-                                           transforms.ToTensor(),
-                                           precision_transform]))
-
-    if name == "imagenet" and split == "test":
-        return ZipData("/mnt/imagenet/val.zip",
-					   "/mnt/imagenet/val_map.txt",
-                       transforms.Compose([transforms.Resize(256),
-                                           transforms.CenterCrop(224),
-                                           transforms.ToTensor(),
-                                           precision_transform]))
 
     if name == "mnist":
         return datasets.MNIST("./data/mnist", train=(split == "train"), download=True,

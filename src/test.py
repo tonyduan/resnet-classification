@@ -17,8 +17,6 @@ if __name__ == "__main__":
     argparser.add_argument("--device", default="cuda", type=str)
     argparser.add_argument("--batch-size", default=64, type=int)
     argparser.add_argument("--num-workers", default=min(os.cpu_count(), 8), type=int)
-    argparser.add_argument("--sample-size-pred", default=64, type=int)
-    argparser.add_argument("--sample-size-cert", default=100000, type=int)
     argparser.add_argument("--dataset-skip", default=1, type=int)
     argparser.add_argument("--experiment-name", default="cifar", type=str)
     argparser.add_argument("--dataset", default="cifar", type=str)
@@ -68,7 +66,7 @@ if __name__ == "__main__":
     for k, v in results.items():
         np.save(f"{save_path}/{k}.npy", v)
 
-    train_dataset = get_dataset(args.dataset, "train")
+    train_dataset = get_dataset(args.dataset, "train", "float")
     train_dataset = Subset(train_dataset, list(range(0, len(train_dataset), args.dataset_skip)))
     train_loader = DataLoader(train_dataset, shuffle=False, 
                               batch_size=args.batch_size,
