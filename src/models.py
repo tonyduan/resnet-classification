@@ -37,24 +37,24 @@ class Classifier(nn.Module):
     def forecast(self, theta):
         return Categorical(logits=theta)
 
-    def loss(self, x, y):
+    def loss(self, x, y, sample_weights=None):
         forecast = self.forecast(self.forward(x))
-        return -forecast.log_prob(y)
+        nll = -forecast.log_prob(y)
+        return nll * sample_weights if sample_weights is not None else nll
+
+    def brier_loss(self, x, y, sample_weights=None):
+        forecast_probs = self.forecast(self.forward(x)).probs
+        one_hot_labels = torch.eye(forecast_probs.shape[1], device=x.device)[y]
+        brier = torch.mean(torch.pow(forecast_probs - one_hot_labels, 2), dim=1)
+        return brier * sample_weights if sample_weights is not None else brier
 
 
 class NormalizeLayer(nn.Module):
     """
     Normalizes across the first non-batch axis.
 
-    Examples:
-
-    if name == "imagenet" and split == "test":
-        return ZipData("/mnt/imagenet/val.zip",
-					   "/mnt/imagenet/val_map.txt",
-                       transforms.Compose([transforms.Resize(256),
-                                           transforms.CenterCrop(224),
-                                           transforms.ToTensor(),
-                                           precision_transform]))
+    Examples
+    --------
         (64, 3, 32, 32) [CIFAR] => normalizes across channels.
         (64, 8)         [UCI]   => normalizes across features
     """
@@ -65,6 +65,24 @@ class NormalizeLayer(nn.Module):
 
     def forward(self, x):
         return (x - self.mu) /self.sigma
+
+
+class LinearModel(Classifier):
+    """
+    Straightforward linear model where logits are a linear combination of features (convex).
+    """ 
+    def __init__(self, dataset, device, precision):
+        super().__init__(dataset, device, precision)
+        self.fc = nn.Linear(get_dim(dataset), get_num_labels(dataset), bias=True)
+        self.flatten = nn.Flatten()
+        self.set_device_and_precision()
+    
+    def forward(self, x):
+        return self.fc(self.flatten(self.norm(x)))
+    
+    def class_activation_map(self, x, y):
+        cam = self.fc.weight[y] * self.flatten(x)
+        return F.interpolate(cam.reshape((x.shape[0], 3, 32, 32)), scale_factor=0.25).mean(dim=1)
 
 
 class ResNet(Classifier):
@@ -183,7 +201,7 @@ class ResNet(Classifier):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        x = self.norm(x)
+        out = self.norm(x)
         out = self.conv1(out)
         out = self.bn_init(out)
         out = F.relu(out)
@@ -197,7 +215,7 @@ class ResNet(Classifier):
         return out
 
     def class_activation_map(self, x, y):
-        x = self.norm(x)
+        out = self.norm(x)
         out = self.conv1(out)
         out = self.bn_init(out)
         out = F.relu(out)
