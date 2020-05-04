@@ -15,9 +15,9 @@ Contains implementations of the following models, for CIFAR-10 and ImageNet:
 
 **Robustness**
 
-We are interested in a *robust* model, which is to say: although we train on a distribution $P$, we still want good performance for a worst-case distribution $Q$ within some uncertainty set. Implicitly this relies on a definition of distance between distributions. Below we consider two examples.
+We are interested in a *robust* model, which is to say: although we train on a distribution <img alt="$P$" src="svgs/df5a289587a2f0247a5b97c1e8ac58ca.svg" align="middle" width="12.83677559999999pt" height="22.465723500000017pt"/>, we still want good performance for a worst-case distribution <img alt="$Q$" src="svgs/1afcdb0f704394b16fe85fb40c45ca7a.svg" align="middle" width="12.99542474999999pt" height="22.465723500000017pt"/> within some uncertainty set. Implicitly this relies on a definition of distance between distributions. Below we consider two examples.
 
-For $\ell_p$ adversarial robustness, we implement empirical attacks:
+For <img alt="$\ell_p$" src="svgs/ca185a0f63add2baa6fe729fd1cfef60.svg" align="middle" width="13.625845199999988pt" height="22.831056599999986pt"/> adversarial robustness, we implement empirical attacks:
 
 - PGD for L-2 and L-inf robustness [5]
 - FGSM for L-inf robustness [6]
@@ -26,7 +26,7 @@ For semantic robustness, the state-of-the-art defense is advanced data augmentat
 
 **Calibration**
 
-Beyond discrimination, we are interested in the *calibration* of a model. It turns out that deep classifiers are not calibrated by default, despite log-likelihood being a proper scoring rule [7]. This is a result of over-fitting to the training data [8]. Mixup [9] is implemented because it's been shown to improve calibration by regularizing the model [10]. We evaluate with the de-biased $\ell_2$ calibration metric over a pre-specified number of bins, following [11]. 
+Beyond discrimination, we are interested in the *calibration* of a model. It turns out that deep classifiers are not calibrated by default, despite log-likelihood being a proper scoring rule [7]. This is a result of over-fitting to the training data [8]. Mixup [9] is implemented because it's been shown to improve calibration by regularizing the model [10]. We evaluate with the de-biased <img alt="$\ell_2$" src="svgs/336fefe2418749fabf50594e52f7b776.svg" align="middle" width="13.40191379999999pt" height="22.831056599999986pt"/> calibration metric over a pre-specified number of bins, following [11]. 
 
 We remark that in our experiments we found that *adversarial training alone* was sufficient to yield well-calibrated models. We hypothesize that adversarial provides a regularizing effect, since state-of-the-art adversarially trained classifiers are unable to achieve neither perfect robust accuracy nor perfect standard accuracy.
 
