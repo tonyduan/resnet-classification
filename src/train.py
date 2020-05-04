@@ -60,10 +60,9 @@ if __name__ == "__main__":
     train_loss_meter = meter.AverageValueMeter()
     test_loss_meter = meter.AverageValueMeter()
 
-    losses_train = []
-    losses_test = []
-    test_calib_l1 = []
-    test_calib_l2 = []
+    train_losses = []
+    test_losses = []
+    test_calib = []
 
     for epoch in range(args.num_epochs):
 
@@ -95,7 +94,7 @@ if __name__ == "__main__":
                             f"Loss: {train_loss_meter.value()[0]:.2f}\t"
                             f"Mins: {(time_meter.value() / 60):.2f}\t"
                             f"Experiment: {args.experiment_name}")
-                losses_train.append(train_loss_meter.value()[0])
+                train_losses.append(train_loss_meter.value()[0])
                 train_loss_meter.reset()
 
         if (epoch + 1) % args.save_every == 0:
@@ -120,24 +119,23 @@ if __name__ == "__main__":
             top_pred_probs[lower:upper] = np.max(preds, axis=1)
             top_pred_labels[lower:upper] = (np.argmax(preds, axis=1) == y.cpu().numpy()).astype(float)
             
-        losses_test.append(test_loss_meter.value()[0])
+        test_losses.append(test_loss_meter.value()[0])
         test_loss_meter.reset()
         obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs,
                                                           n_bins=10, raise_on_nan=False)
-        test_calib_l1.append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 1))
-        test_calib_l2.append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+        test_calib.append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
     save_path = f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch"
     torch.save(model.state_dict(), save_path)
     args_path = f"{args.output_dir}/{args.experiment_name}/args.pkl"
     pickle.dump(args, open(args_path, "wb"))
-    save_path = f"{args.output_dir}/{args.experiment_name}/losses_train.npy"
-    np.save(save_path, np.array(losses_train))
-    save_path = f"{args.output_dir}/{args.experiment_name}/losses_test.npy"
-    np.save(save_path, np.array(losses_test))
+    save_path = f"{args.output_dir}/{args.experiment_name}/train_losses.npy"
+    np.save(save_path, np.array(train_losses))
+    save_path = f"{args.output_dir}/{args.experiment_name}/test_losses.npy"
+    np.save(save_path, np.array(test_losses))
     save_path = f"{args.output_dir}/{args.experiment_name}/calib_l1.npy"
     np.save(save_path, np.array(test_calib_l1))
     save_path = f"{args.output_dir}/{args.experiment_name}/calib_l2.npy"
-    np.save(save_path, np.array(test_calib_l2))
+    np.save(save_path, np.array(test_calib))
 

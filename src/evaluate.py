@@ -10,7 +10,7 @@ from src.datasets import *
 
 def calibration_curve(labels, preds, n_bins=10, eps=1e-8, raise_on_nan=True):
     """
-    Returns
+    Returns calibration curve at the pre-specified number of bins.
     -------
     obs_cdfs: (n_bins,) 
     pred_cdfs: (n_bins,) 
@@ -33,7 +33,7 @@ def calibration_curve(labels, preds, n_bins=10, eps=1e-8, raise_on_nan=True):
 
 def calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=2, n_mc_samples=1000):
     """
-    De-biased L-p calibration error [Kumar et al. NeurIPS 2019].
+    De-biased L-p calibration error [Kumar et al. NeurIPS 2019], where p in {1, 2}.
 
     Todo
     ----
@@ -63,13 +63,13 @@ if __name__ == "__main__":
     folder = Path(f"ckpts/{args.experiment_name}/")
     folder.mkdir(parents=True, exist_ok=True)
 
-    losses_train = np.load(f"ckpts/{args.experiment_name}/losses_train.npy")
-    losses_test = np.load(f"ckpts/{args.experiment_name}/losses_test.npy")
+    train_losses = np.load(f"ckpts/{args.experiment_name}/train_losses.npy")
+    test_losses = np.load(f"ckpts/{args.experiment_name}/test_losses.npy")
 
-    delta = len(losses_train) // len(losses_test)
+    delta = len(train_losses) // len(test_losses)
     plt.figure(figsize=(6, 3))
-    plt.plot(losses_train, color="black", label="Train")
-    plt.plot(np.arange(0, len(losses_train), delta), losses_test, color="grey", label="Test")
+    plt.plot(train_losses, color="black", label="Train")
+    plt.plot(np.arange(0, len(train_losses), delta), test_losses, color="grey", label="Test")
     plt.xlabel("Training Iterations")
     plt.ylabel("Loss")
     plt.legend()
@@ -104,7 +104,6 @@ if __name__ == "__main__":
 
     print("== Marginal calibration error (over all classes)")
     obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(labels_one_hot.ravel(), preds.ravel())
-    breakpoint()
     print(f"  L2 Calibration Error: {calibration_error(obs_cdfs, pred_cdfs, bin_cnts):.2f}")
     print(f"  L1 Calibration Error: {calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 1):.2f}")
 
@@ -132,5 +131,3 @@ if __name__ == "__main__":
         plt.title(f"Truth: {label_names[int(labels[i])]}")
         folder = Path(f"ckpts/{args.experiment_name}/{label_names[int(labels[i])]}/")
         folder.mkdir(parents=True, exist_ok=True)
-        plt.savefig(f"{folder}/{i}.png")
-
