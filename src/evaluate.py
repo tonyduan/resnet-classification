@@ -129,5 +129,7 @@ if __name__ == "__main__":
         plt.subplot(1, 2, 2)
         plt.imshow(test_dataset[i][0].numpy().transpose(1, 2, 0))
         plt.title(f"Truth: {label_names[int(labels[i])]}")
-        folder = Path(f"ckpts/{args.experiment_name}/{label_names[int(labels[i])]}/")
+        folder = Path(f"out/{args.experiment_name}/{label_names[int(labels[i])]}/")
         folder.mkdir(parents=True, exist_ok=True)
+        plt.savefig(f"{folder}/{i}.png")
+
