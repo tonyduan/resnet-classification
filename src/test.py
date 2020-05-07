@@ -39,6 +39,7 @@ if __name__ == "__main__":
         save_path = args.save_path
 
     model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision)
+    model = DataParallelWrapper(model) if args.data_parallel else model
     saved_dict = torch.load(save_path)
     model.load_state_dict(saved_dict)
     model.eval()

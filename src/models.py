@@ -49,6 +49,18 @@ class Classifier(nn.Module):
         return brier * sample_weights if sample_weights is not None else brier
 
 
+class DataParallelWrapper(nn.DataParallel):
+    """
+    Wrapper around nn.DataParallel that exposes custom methods.
+    Source: https://github.com/pytorch/pytorch/issues/16885
+    """
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
+
+
 class NormalizeLayer(nn.Module):
     """
     Normalizes across the first non-batch axis.

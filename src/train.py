@@ -34,6 +34,7 @@ if __name__ == "__main__":
     argparser.add_argument("--adversary", default=None, type=str)
     argparser.add_argument("--eps", default=8/255, type=float)
     argparser.add_argument("--mixup", action="store_true")
+    argparser.add_argument("--data-parallel", action="store_true")
     argparser.add_argument('--output-dir', type=str, default=os.getenv("PT_OUTPUT_DIR"))
     args = argparser.parse_args()
 
@@ -41,6 +42,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision)
+    model = DataParallelWrapper(model) if args.data_parallel else model
 
     train_dataset = get_dataset(args.dataset, "train", args.precision)
     train_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size,
