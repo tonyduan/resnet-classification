@@ -134,8 +134,6 @@ if __name__ == "__main__":
     np.save(save_path, np.array(train_losses))
     save_path = f"{args.output_dir}/{args.experiment_name}/test_losses.npy"
     np.save(save_path, np.array(test_losses))
-    save_path = f"{args.output_dir}/{args.experiment_name}/calib_l1.npy"
-    np.save(save_path, np.array(test_calib_l1))
-    save_path = f"{args.output_dir}/{args.experiment_name}/calib_l2.npy"
+    save_path = f"{args.output_dir}/{args.experiment_name}/test_calib.npy"
     np.save(save_path, np.array(test_calib))
 
