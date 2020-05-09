@@ -22,6 +22,7 @@ if __name__ == "__main__":
     argparser.add_argument("--eps", default=8/255, type=float)
     argparser.add_argument("--experiment-name", default="cifar", type=str)
     argparser.add_argument("--dataset", default="cifar", type=str)
+    argparser.add_argument("--data-parallel", action="store_true")
     argparser.add_argument("--model", default="ResNet", type=str)
     argparser.add_argument("--precision", default="float", type=str)
     argparser.add_argument("--output-dir", type=str, default=os.getenv("PT_OUTPUT_DIR"))
