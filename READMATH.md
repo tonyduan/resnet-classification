@@ -28,7 +28,7 @@ For semantic robustness, the state-of-the-art defense is advanced data augmentat
 
 Beyond discrimination, we are interested in the *calibration* of a model. It turns out that deep classifiers are not calibrated by default, despite log-likelihood being a proper scoring rule [7]. This is a result of over-fitting to the training data [8]. Mixup [9] is implemented because it's been shown to improve calibration by regularizing the model [10]. We evaluate with the de-biased $\ell_2$ calibration metric over a pre-specified number of bins, following [11]. 
 
-We remark that in our experiments we found that *adversarial training alone* was sufficient to yield well-calibrated models. We hypothesize that adversarial provides a regularizing effect, since state-of-the-art adversarially trained classifiers are unable to achieve neither perfect robust accuracy nor perfect standard accuracy.
+We remark that *adversarial training* without mixup makes it easier to yield well-calibrated models because it takes longer (more iterations) to overfit to the training data. Yet adversarial training does eventually overfit [12], so calibration eventually suffers unless further regularization is applied.
 
 ---
 
@@ -55,3 +55,5 @@ We remark that in our experiments we found that *adversarial training alone* was
 [10] S. Thulasidasan, G. Chennupati, J. A. Bilmes, T. Bhattacharya, & S. Michalak, On Mixup Training: Improved Calibration and Predictive Uncertainty for Deep Neural Networks. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d\textquotesingle Alché-Buc, E. Fox, & R. Garnett,eds., Advances in Neural Information Processing Systems 32 (Curran Associates, Inc., 2019), pp. 13888–13899.
 
 [11] A. Kumar, P. S. Liang, & T. Ma, Verified Uncertainty Calibration. In H. Wallach, H. Larochelle, A. Beygelzimer, F. d\textquotesingle Alché-Buc, E. Fox, & R. Garnett,eds., *Advances in Neural Information Processing Systems 32* (Curran Associates, Inc., 2019), pp. 3787–3798.
+
+[12] L. Rice, E. Wong, & J. Z. Kolter, *Overfitting in adversarially robust deep learning* (2020).
