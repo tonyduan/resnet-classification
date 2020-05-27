@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from argparse import ArgumentParser
+from collections import defaultdict
 from torchnet import meter
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -14,7 +15,7 @@ from src.attacks import *
 from src.mixup import *
 from src.models import *
 from src.datasets import get_dataset, get_dim
-from src.evaluate import calibration_curve, calibration_error
+from src.evaluate import *
 
 
 if __name__ == "__main__":
@@ -62,9 +63,9 @@ if __name__ == "__main__":
     train_loss_meter = meter.AverageValueMeter()
     test_loss_meter = meter.AverageValueMeter()
 
-    train_losses = []
-    test_losses = []
-    test_calib = []
+    results = defaultdict(list)
+    test_resolution = []
+    test_reliability = []
 
     for epoch in range(args.num_epochs):
 
@@ -96,7 +97,7 @@ if __name__ == "__main__":
                             f"Loss: {train_loss_meter.value()[0]:.2f}\t"
                             f"Mins: {(time_meter.value() / 60):.2f}\t"
                             f"Experiment: {args.experiment_name}")
-                train_losses.append(train_loss_meter.value()[0])
+                results["train_losses"].append(train_loss_meter.value()[0])
                 train_loss_meter.reset()
 
         if (epoch + 1) % args.save_every == 0:
@@ -110,6 +111,8 @@ if __name__ == "__main__":
 
         top_pred_probs = np.zeros(len(test_dataset))
         top_pred_labels = np.zeros(len(test_dataset))
+        overall_preds = np.zeros((len(test_dataset), get_num_labels(args.dataset)))
+        overall_labels = np.zeros((len(test_dataset), get_num_labels(args.dataset)))
 
         for i, (x, y) in enumerate(test_loader):    
             
@@ -120,22 +123,32 @@ if __name__ == "__main__":
             preds = model.forecast(model.forward(x)).probs.data.cpu().numpy()
             top_pred_probs[lower:upper] = np.max(preds, axis=1)
             top_pred_labels[lower:upper] = (np.argmax(preds, axis=1) == y.cpu().numpy()).astype(float)
+
+            overall_preds[lower:upper] = preds
+            overall_labels[lower:upper] = np.eye(get_num_labels(args.dataset))[y.cpu().data.numpy()]
             
-        test_losses.append(test_loss_meter.value()[0])
+        results["test_losses"].append(test_loss_meter.value()[0])
         test_loss_meter.reset()
+
         obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs,
                                                           n_bins=10, raise_on_nan=False)
-        test_calib.append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+        results["test_calib"].append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+        results["test_resolution"].append(loglik_resolution(np.mean(top_pred_labels), obs_cdfs, bin_cnts))
+        results["test_reliability"].append(loglik_reliability(obs_cdfs, pred_cdfs, bin_cnts))
+
+        obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(overall_labels.ravel(), overall_preds.ravel(),
+                                                          n_bins=10, raise_on_nan=False)
+        results["test_overall_calib"].append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+        results["test_overall_resolution"].append(loglik_resolution(1 / get_num_labels(args.dataset), obs_cdfs, bin_cnts))
+        results["test_overall_reliability"].append(loglik_reliability(obs_cdfs, pred_cdfs, bin_cnts))
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
     save_path = f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch"
     torch.save(model.state_dict(), save_path)
     args_path = f"{args.output_dir}/{args.experiment_name}/args.pkl"
     pickle.dump(args, open(args_path, "wb"))
-    save_path = f"{args.output_dir}/{args.experiment_name}/train_losses.npy"
-    np.save(save_path, np.array(train_losses))
-    save_path = f"{args.output_dir}/{args.experiment_name}/test_losses.npy"
-    np.save(save_path, np.array(test_losses))
-    save_path = f"{args.output_dir}/{args.experiment_name}/test_calib.npy"
-    np.save(save_path, np.array(test_calib))
+
+    for k, v in results.items():
+        save_path = f"{args.output_dir}/{args.experiment_name}/{k}.npy"
+        np.save(save_path, np.array(v))
 
