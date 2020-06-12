@@ -7,23 +7,8 @@ from pathlib import Path
 from tqdm import tqdm
 from sklearn.metrics import average_precision_score
 from src.datasets import *
+from src.scores import *
 
-
-def loglik_resolution(marginal_prob, obs_cdfs, bin_cnts):
-    """
-    Returns log-likelihood resolution.
-    """
-    kl_div = (sp.special.rel_entr(obs_cdfs, marginal_prob) + 
-              sp.special.rel_entr(1 - obs_cdfs, 1 - marginal_prob))
-    return np.average(kl_div, weights=bin_cnts)
-
-def loglik_reliability(obs_cdfs, pred_cdfs, bin_cnts):
-    """
-    Returns log-likelihood reliability.
-    """
-    kl_div = (sp.special.rel_entr(pred_cdfs, obs_cdfs) + 
-              sp.special.rel_entr(1 - pred_cdfs, 1 - obs_cdfs))
-    return np.average(kl_div, weights=bin_cnts)
 
 def calibration_curve(labels, preds, n_bins=10, eps=1e-8, raise_on_nan=True):
     """
