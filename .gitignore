@@ -3,5 +3,6 @@ ckpts/*/*
 out/
 jobs/
 __pycache__
+phillytools/
 *.pyc
 *.swp
