@@ -37,7 +37,7 @@ if __name__ == "__main__":
     argparser.add_argument("--mixup", action="store_true")
     argparser.add_argument("--weight-decay", default=1e-4, type=float)
     argparser.add_argument("--data-parallel", action="store_true")
-    argparser.add_argument("--num-bins", default=100, type=int)
+    argparser.add_argument("--num-bins", default=200, type=int)
     argparser.add_argument('--output-dir', type=str, default=os.getenv("PT_OUTPUT_DIR"))
     args = argparser.parse_args()
 
@@ -111,29 +111,38 @@ if __name__ == "__main__":
         for loader, size, prefix in ((train_loader, len(train_dataset), "train"),
                                      (test_loader, len(test_dataset), "test")):
 
-            top_pred_probs = np.zeros(size)
-            top_pred_labels = np.zeros(size)
+            #top_pred_probs = np.zeros(size)
+            #top_pred_labels = np.zeros(size)
             overall_preds = np.zeros((size, get_num_labels(args.dataset)))
+            overall_preds_adv = np.zeros((size, get_num_labels(args.dataset)))
             overall_logits = np.zeros((size, get_num_labels(args.dataset)))
+            overall_logits_adv = np.zeros((size, get_num_labels(args.dataset)))
             overall_labels = np.zeros((size, get_num_labels(args.dataset)))
 
             for i, (x, y) in enumerate(loader):    
                 
                 x, y = x.to(args.device), y.to(args.device)
+                x_adv = pgd_attack(model, x, y, eps=args.eps)
 
                 lower, upper = i * args.batch_size, (i + 1) * args.batch_size
                 preds = model.forecast(model.forward(x)).probs.data.cpu().numpy()
+                preds_adv = model.forecast(model.forward(x_adv)).probs.data.cpu().numpy()
                 logits = model.forecast(model.forward(x)).logits.data.cpu().numpy()
-                top_pred_probs[lower:upper] = np.max(preds, axis=1)
-                top_pred_labels[lower:upper] = (np.argmax(preds, axis=1) == y.cpu().numpy()).astype(float)
+                logits_adv = model.forecast(model.forward(x_adv)).logits.data.cpu().numpy()
+
+                #top_pred_probs[lower:upper] = np.max(preds, axis=1)
+                #top_pred_labels[lower:upper] = (np.argmax(preds, axis=1) == y.cpu().numpy()).astype(float)
 
                 overall_preds[lower:upper] = preds
+                overall_preds_adv[lower:upper] = preds_adv
                 overall_logits[lower:upper] = logits
+                overall_logits_adv[lower:upper] = logits_adv
                 overall_labels[lower:upper] = np.eye(get_num_labels(args.dataset))[y.cpu().data.numpy()]
                 
-            obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs,
-                                                              n_bins=10, raise_on_nan=False)
-            results[f"{prefix}_top_calib"].append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+            #obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs,
+            #                                                  n_bins=10, raise_on_nan=False)
+            #results[f"{prefix}_top_calib"].append(calibration_error(obs_cdfs, pred_cdfs, bin_cnts, 2))
+
             marginal = overall_labels.mean(axis=0, keepdims=True)
             accuracy = (overall_logits.argmax(axis=1) == overall_labels.argmax(axis=1)).mean()
 
@@ -147,6 +156,17 @@ if __name__ == "__main__":
             results[f"{prefix}_brier_res"].append(BrierScore.resolution(obs, marginal, bin_cnts))
             results[f"{prefix}_brier_unc"].append(BrierScore.uncertainty(marginal, np.sum(bin_cnts)))
             results[f"{prefix}_acc"].append(accuracy)
+
+            pred, obs, bin_cnts = discretize_multivar(overall_labels, overall_preds_adv, n_bins=args.num_bins)
+            results[f"{prefix}_adv_nll"].append(NLLScore.score(overall_logits_adv, overall_labels, logits=True).mean())
+            results[f"{prefix}_adv_nll_rel"].append(NLLScore.reliability(obs, pred, bin_cnts))
+            results[f"{prefix}_adv_nll_res"].append(NLLScore.resolution(obs, marginal, bin_cnts))
+            results[f"{prefix}_adv_nll_unc"].append(NLLScore.uncertainty(marginal, np.sum(bin_cnts)))
+            results[f"{prefix}_adv_brier"].append(BrierScore.score(overall_preds, overall_labels).mean())
+            results[f"{prefix}_adv_brier_rel"].append(BrierScore.reliability(obs, pred, bin_cnts))
+            results[f"{prefix}_adv_brier_res"].append(BrierScore.resolution(obs, marginal, bin_cnts))
+            results[f"{prefix}_adv_brier_unc"].append(BrierScore.uncertainty(marginal, np.sum(bin_cnts)))
+            results[f"{prefix}_adv_acc"].append(accuracy)
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
     save_path = f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch"

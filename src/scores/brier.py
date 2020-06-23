@@ -20,10 +20,7 @@ class BrierScore(Score):
 
     @staticmethod
     def divergence(q, p):
-        I = np.eye(q.shape[1])[np.newaxis, :, :]
-        Q = np.repeat(q[:, :, np.newaxis], q.shape[1], axis=2)
-        P = np.repeat(p[:, :, np.newaxis], p.shape[1], axis=2)
-        D = np.sum(Q.transpose(0, 2, 1) * ((P - Q) * (P + Q - 2 * I)), axis=(1, 2))
+        D = np.linalg.norm(q - p, axis=1) ** 2
         return D
  
     @staticmethod
