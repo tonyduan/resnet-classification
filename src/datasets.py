@@ -10,7 +10,7 @@ from src.lib.zipdata import ZipData
 
 
 class PrecisionTransform(object):
-    
+
     def __init__(self, precision):
         self.precision = precision
 
@@ -115,22 +115,22 @@ def get_dataset(name, split, precision):
                                            precision_transform]))
 
     if name == "imagenet" and split == "test":
-        return ZipData("/mnt/imagenet/val.zip", "/mnt/imagenet/val_map.txt", 
-                       transforms.Compose([transforms.Resize(256), 
+        return ZipData("/mnt/imagenet/val.zip", "/mnt/imagenet/val_map.txt",
+                       transforms.Compose([transforms.Resize(256),
                                            transforms.CenterCrop(224),
                                            transforms.ToTensor(),
                                            precision_transform]))
 
     if name == "ds-imagenet" and split == "train":
-        return DSImageNet("/mnt/vlgrounding/downsampled_imagenet", "train",
-                          transforms.Compose([transforms.RandomHorizontalFlip(), 
-                                              transforms.ToTensor(),
-                                              precision_transform]))
+        return DownsampledImageNet("/mnt/vlgrounding/downsampled_imagenet", "train",
+                                   transforms.Compose([transforms.RandomHorizontalFlip(),
+                                                       transforms.ToTensor(),
+                                                       precision_transform]))
 
     if name == "ds-imagenet" and split == "test":
-        return DSImageNet("/mnt/vlgrounding/downsampled_imagenet", "test",
-                          transforms.Compose([transforms.ToTensor(),
-                                              precision_transform]))
+        return DownsampledImageNet("/mnt/vlgrounding/downsampled_imagenet", "test",
+                                   transforms.Compose([transforms.ToTensor(),
+                                                       precision_transform]))
 
     if name == "mnist":
         return datasets.MNIST("./data/mnist", train=(split == "train"), download=True,
@@ -149,25 +149,15 @@ def get_dataset(name, split, precision):
     raise ValueError
 
 
-class DSImageNet(Dataset):
+class DownsampledImageNet(Dataset):
     """
-    Downsampled ImageNet to size 32x32. [https://patrykchrabaszcz.github.io/Imagenet32/]
+    Downsampled ILSVRC dataset with 1000 labels and ~1.3M images, to size 32x32.
+
+    Source: Chrabaszcz et al. 2017.
+    Notes: requires access to ImageNet to download.
     """
-    train_batches = [
-        'train_data_batch_1',
-        'train_data_batch_2',
-        'train_data_batch_3',
-        'train_data_batch_4',
-        'train_data_batch_5',
-        'train_data_batch_6',
-        'train_data_batch_7',
-        'train_data_batch_8',
-        'train_data_batch_9',
-        'train_data_batch_10',
-    ]
-    test_batches = [
-        'val_data',
-    ]
+    train_batches = [f"train_data_batch_{i}" for i in range(1, 10 + 1)]
+    test_batches = ["val_data"]
 
     def __init__(self, root, split="train", transform=None, target_transform=None):
         self.root = os.path.expanduser(root)
@@ -185,7 +175,7 @@ class DSImageNet(Dataset):
         # convert to (batch, height, width, channel) for PIL
         self.data = np.concatenate(self.data)
         self.data = self.data.reshape((self.data.shape[0], 3, 32, 32))
-        self.data = self.data.transpose((0, 2, 3, 1)) 
+        self.data = self.data.transpose((0, 2, 3, 1))
 
     def __getitem__(self, index):
         img, target = self.data[index], self.labels[index]
@@ -196,4 +186,27 @@ class DSImageNet(Dataset):
 
     def __len__(self):
         return len(self.data)
+
+
+class CIFAR10SelfTrained(Dataset):
+    """
+    Self-trained labels for a 500K subset of 80 Million Tiny Images corresponding to CIFAR-10.
+
+    Source: Carmon et al. NeurIPS 2019.
+    """
+    def __init__(self, path, transform=None, target_transform=None):
+        with open(path, "rb") as fd:
+            self.dataset = pickle.load(fd)
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __getitem__(self, index):
+        img, target = self.dataset["data"][index], self.dataset["extrapolated_targets"][index]
+        img = Image.fromarray(img)
+        img = self.transform(img) if self.transform is not None else img
+        target = self.target_transform(target) if self.target_transform is not None else target
+        return img, target
+
+    def __len__(self):
+        return len(self.dataset["extrapolated_targets"])
 
