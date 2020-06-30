@@ -5,6 +5,7 @@ from torch.distributions import Categorical
 from src.datasets import *
 from src.blocks import BasicBlock, Bottleneck, BasicBlockV2, BottleneckV2
 from src.blocks import SEBasicBlock, SEBottleneck
+from src.blocks import InvertedBottleneck
 
 
 class Classifier(nn.Module):
@@ -82,16 +83,16 @@ class NormalizeLayer(nn.Module):
 class LinearModel(Classifier):
     """
     Straightforward linear model where logits are a linear combination of features (convex).
-    """ 
+    """
     def __init__(self, dataset, device, precision):
         super().__init__(dataset, device, precision)
         self.fc = nn.Linear(get_dim(dataset), get_num_labels(dataset), bias=True)
         self.flatten = nn.Flatten()
         self.set_device_and_precision()
-    
+
     def forward(self, x):
         return self.fc(self.flatten(self.norm(x)))
-    
+
     def class_activation_map(self, x, y):
         cam = self.fc.weight[y] * self.flatten(x)
         return F.interpolate(cam.reshape((x.shape[0], 3, 32, 32)), scale_factor=0.25).mean(dim=1)
@@ -113,14 +114,16 @@ class ResNet(Classifier):
         3. Global average pool, then linear layer to logits.
 
     Configurations for canonical models are described below:
+    - ResNets, for both CIFAR-10 and ImageNet [He et al. CVPR 2016]
     - Wide ResNets [Zagoruyko and Komodakis ECCV 2016].
+    - SE ResNets [Hu et al. CVPR 2018].
     """
     # == ImageNet models
     resnet18_layers = [
         {"block": BasicBlock, "num_blocks": 2, "num_filters": 64},  # 64 x 56 x 56 output
         {"block": BasicBlock, "num_blocks": 2, "num_filters": 128}, # 128 x 28 x 28 output
         {"block": BasicBlock, "num_blocks": 2, "num_filters": 256}, # 256 x 14 x 14 output
-        {"block": BasicBlock, "num_blocks": 2, "num_filters": 512}, # 128 x 7 x 7 output
+        {"block": BasicBlock, "num_blocks": 2, "num_filters": 512}, # 512 x 7 x 7 output
     ]
     resnet50_layers = [
         {"block": Bottleneck, "num_blocks": 3, "num_filters": 256},  # 256 x 56 x 56 output
@@ -183,7 +186,7 @@ class ResNet(Classifier):
         for layer_no, config in enumerate(layers_config):
             for block_no in range(config["num_blocks"]):
                 stride = 2 if layer_no != 0 and block_no == 0 else 1
-                self.blocks.append(config["block"](in_filters=num_filters, 
+                self.blocks.append(config["block"](in_filters=num_filters,
                                                    out_filters=config["num_filters"],
                                                    stride=stride,
                                                    **config))
@@ -199,7 +202,7 @@ class ResNet(Classifier):
     def initialize_weights(self):
         """
         Initialize as in [He et al. ICCV 2015]:
-        1. Convolution weights ~ N(0, 2 / (kernel_size x kernel_size x n_output_filters)) 
+        1. Convolution weights ~ N(0, 2 / (kernel_size x kernel_size x n_output_filters))
         2. Batch norm weights = 1 biases = 0.
         Note that this guarantees the output variance is O(1) for deep networks.
         """
@@ -236,8 +239,91 @@ class ResNet(Classifier):
             out = block(out)
         out = self.bn_final(out)
         out = F.relu(out)
-        cam = self.linear.weight[y].unsqueeze(1) @ out.flatten(start_dim=2, end_dim=-1) 
+        cam = self.linear.weight[y].unsqueeze(1) @ out.flatten(start_dim=2, end_dim=-1)
         cam = cam.squeeze(1) + self.linear.bias[y].unsqueeze(1)
-        cam = cam.view(-1, *out.shape[2:]) 
+        cam = cam.view(-1, *out.shape[2:])
         return cam
+
+
+class MobileNetV2(Classifier):
+    """
+    Classic residual network [Sandler et al. CVPR 2018].
+    See `blocks.py` for InvertedBottleneck implementation.
+
+    Consists of:
+        1. Initial convolution, batch norm (strided for ImageNet).
+        2. Sequence of layers, each consisting of a number of blocks with fixed number of filters.
+           At the first convolution of each layer we may downsample by half by setting stride = 2.
+        3. Global average pool, then linear layer to logits.
+
+    Configurations for canonical models are described below:
+    - MobileNetV2 [Sandler et al. CVPR 2018].
+    """
+    # == ImageNet models
+    mobilenetv2_layers = [
+        {"block": InvertedBottleneck, "num_blocks": 1, "num_filters": 16, "firststride": 1, "expand": 1}, # 16 x 112 x 112 output
+        {"block": InvertedBottleneck, "num_blocks": 2, "num_filters": 24, "firststride": 2, "expand": 6}, # 24 x 56 x 56 output
+        {"block": InvertedBottleneck, "num_blocks": 3, "num_filters": 32, "firststride": 2, "expand": 6}, # 32 x 28 x 28 output
+        {"block": InvertedBottleneck, "num_blocks": 4, "num_filters": 64, "firststride": 2, "expand": 6}, # 64 x 14 x 14 output
+        {"block": InvertedBottleneck, "num_blocks": 3, "num_filters": 96, "firststride": 1, "expand": 6}, # 96 x 14 x 14 output
+        {"block": InvertedBottleneck, "num_blocks": 3, "num_filters": 160, "firststride": 2, "expand": 6}, # 160 x 7 x 7 output
+        {"block": InvertedBottleneck, "num_blocks": 1, "num_filters": 320, "firststride": 1, "expand": 6}, # 320 x 7 x 7 output
+    ]
+
+    def __init__(self, dataset, device, precision, layers_config=mobilenetv2_layers):
+
+        super().__init__(dataset, device, precision)
+
+        num_filters = 32
+        self.conv_init = nn.Conv2d(3, num_filters, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn_init = nn.BatchNorm2d(num_filters)
+        self.blocks = nn.ModuleList()
+
+        for layer_no, config in enumerate(layers_config):
+            for block_no in range(config["num_blocks"]):
+                stride = config["firststride"] if layer_no != 0 and block_no == 0 else 1
+                self.blocks.append(config["block"](in_filters=num_filters,
+                                                   out_filters=config["num_filters"],
+                                                   stride=stride,
+                                                   **config))
+                num_filters = config["num_filters"]
+
+        self.conv_final = nn.Conv2d(num_filters, num_filters * 4, kernel_size=1, bias=False)
+        self.bn_final = nn.BatchNorm2d(num_filters * 4)
+
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
+        self.linear = nn.Linear(num_filters, get_num_labels(dataset))
+        self.initialize_weights()
+        self.set_device_and_precision()
+
+    def initialize_weights(self):
+        """
+        Initialize as in [He et al. ICCV 2015]:
+        1. Convolution weights ~ N(0, 2 / (kernel_size x kernel_size x n_output_filters))
+        2. Batch norm weights = 1 biases = 0.
+        Note that this guarantees the output variance is O(1) for deep networks.
+        """
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def forward(self, x):
+        out = self.norm(x)
+        out = self.conv_init(out)
+        out = self.bn_init(out)
+        out = F.relu6(out)
+        for block in self.blocks:
+            out = block(out)
+        out = self.conv_final(out)
+        out = self.bn_final(out)
+        out = F.relu6(out)
+        out = self.avgpool(out)
+        out = self.linear(self.flatten(out))
+        return out
 

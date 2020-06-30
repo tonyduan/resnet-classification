@@ -22,7 +22,7 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_filters, out_filters, stride=1, **kwargs):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3, 
+        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters)
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
@@ -56,7 +56,7 @@ class Bottleneck(nn.Module):
 
         Bottleneck(x) = ReLU( x + Conv1x1( ReLU( Conv3x3( ReLu( Conv1x1(x)) ) ) ) )
 
-    Batch norm follows each convolution, and residual connection has a projection if 
+    Batch norm follows each convolution, and residual connection has a projection if
     the dimensionality changes (either due to striding or different in/out filters).
     """
     pre_activation = False
@@ -65,7 +65,7 @@ class Bottleneck(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
-        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3, 
+        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
@@ -78,7 +78,7 @@ class Bottleneck(nn.Module):
                                           nn.BatchNorm2d(out_filters))
 
     def forward(self, x):
-        out = self.conv1(out)
+        out = self.conv1(x)
         out = self.bn1(out)
         out = F.relu(out)
         out = self.conv2(out)
@@ -100,7 +100,7 @@ class BasicBlockV2(nn.Module):
     def __init__(self, in_filters, out_filters, stride=1, **kwargs):
         super().__init__()
         self.bn1 = nn.BatchNorm2d(in_filters)
-        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3, 
+        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters)
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
@@ -111,7 +111,7 @@ class BasicBlockV2(nn.Module):
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
                                           nn.BatchNorm2d(out_filters))
-       
+
     def forward(self, x):
         out = self.bn1(x)
         out = F.relu(out)
@@ -134,7 +134,7 @@ class BottleneckV2(nn.Module):
         self.bn1 = nn.BatchNorm2d(in_filters)
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
-        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3, 
+        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn3 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
@@ -146,7 +146,7 @@ class BottleneckV2(nn.Module):
                                           nn.BatchNorm2d(out_filters))
 
     def forward(self, x):
-        out = self.bn1(out)
+        out = self.bn1(x)
         out = F.relu(out)
         residual = x if isinstance(self.shortcut, nn.Identity) else self.shortcut(out)
         out = self.conv1(out)
@@ -191,7 +191,7 @@ class SEBasicBlock(nn.Module):
 
     def __init__(self, in_filters, out_filters, stride=1, reduction=16, **kwargs):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3, 
+        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters)
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
@@ -204,7 +204,7 @@ class SEBasicBlock(nn.Module):
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
                                           nn.BatchNorm2d(out_filters))
-        
+
 
     def forward(self, x):
         out = self.conv1(x)
@@ -228,7 +228,7 @@ class SEBottleneck(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
-        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3, 
+        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
                                stride=stride, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
@@ -242,7 +242,7 @@ class SEBottleneck(nn.Module):
                                           nn.BatchNorm2d(out_filters))
 
     def forward(self, x):
-        out = self.conv1(out)
+        out = self.conv1(x)
         out = self.bn1(out)
         out = F.relu(out)
         out = self.conv2(out)
@@ -253,5 +253,46 @@ class SEBottleneck(nn.Module):
         out = self.se(out)
         out = out + self.shortcut(x)
         out = F.relu(out)
+        return out
+
+
+class InvertedBottleneck(nn.Module):
+    """
+    Inverted Bottleneck block: (1) use an expansion factor instead of a squeeze factor,
+    (2) use a depth-wise convolution of expanded features, and (3) remove the post-shortcut ReLU.
+
+    [Sandler et al. CVPR 2018].
+
+        InvertedResidual(x) = x + Conv1x1( ReLU6( DepthWiseConv3x3( ReLU6( Conv1x1(x)) ) ) )
+
+    Batch norm follows each convolution, and we *remove* the residual connection if
+    the dimensionality changes (which occurs either due to striding or different in/out filters).
+    """
+    pre_activation = False
+
+    def __init__(self, in_filters, out_filters, stride=1, expand=6, **kwargs):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_filters, out_filters * expand, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_filters * expand)
+        self.conv2 = nn.Conv2d(out_filters * expand, out_filters * expand, kernel_size=3,
+                               stride=stride, padding=1, bias=False, groups=out_filters * expand)
+        self.bn2 = nn.BatchNorm2d(out_filters * expand)
+        self.conv3 = nn.Conv2d(out_filters * expand, out_filters, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(out_filters)
+        if stride == 1 and in_filters == out_filters:
+            self.shortcut = nn.Identity()
+        else:
+            self.shortcut = None
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = F.relu6(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = F.relu6(out)
+        out = self.conv3(out)
+        out = self.bn3(out)
+        out = out + self.shortcut(x) if self.shortcut is not None else out
         return out
 
