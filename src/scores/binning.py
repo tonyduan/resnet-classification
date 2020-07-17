@@ -5,6 +5,11 @@ from sklearn.cluster import KMeans, AgglomerativeClustering
 def discretize_multivar(q, p, n_bins=20):
     """
     Partition the simplex with K-Means clustering.
+
+    Notice that we can recover the clusters by running something like the following.
+
+    >>> obs, pred, bin_cnts = discretize_multivar(labels_one_hot, preds, n_bins=100)
+    >>> unique_bins = np.unique(np.round(pred, 3), axis=0)
     """
     #kmeans = KMeans(n_clusters=n_bins, init="k-means++")
     #kmeans.fit(p)
@@ -16,7 +21,8 @@ def discretize_multivar(q, p, n_bins=20):
     obs = np.vstack([q[bin_ids == i].mean(axis=0) for i in range(n_bins)])
     bin_cnts = np.bincount(bin_ids, minlength=n_bins)
     assert np.all(bin_cnts > 0)
-    return pred, obs, bin_cnts
+
+    return obs, pred, bin_cnts
 
 #
 #def discretize_multivar(q, p, n_bins=20):

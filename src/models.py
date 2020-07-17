@@ -245,6 +245,15 @@ class ResNet(Classifier):
         return cam
 
 
+class WRN_40_2(ResNet):
+    def __init__(self, dataset, device, precision):
+        super().__init__(dataset, device, precision, layers_config=ResNet.wrn_40_2_layers)
+
+class WRN_28_10(ResNet):
+    def __init__(self, dataset, device, precision):
+        super().__init__(dataset, device, precision, layers_config=ResNet.wrn_28_10_layers)
+
+
 class MobileNetV2(Classifier):
     """
     Classic residual network [Sandler et al. CVPR 2018].

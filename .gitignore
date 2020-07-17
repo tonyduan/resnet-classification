@@ -1,5 +1,6 @@
 data/*/*
 ckpts/*/*
+bk/
 out/
 jobs/
 __pycache__

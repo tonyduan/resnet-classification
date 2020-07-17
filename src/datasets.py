@@ -5,7 +5,7 @@ import torch
 import random
 from PIL import Image
 from torchvision import datasets, transforms
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Subset
 from src.lib.zipdata import ZipData
 
 
@@ -22,6 +22,25 @@ class PrecisionTransform(object):
         if self.precision == "double":
             return x.double()
 
+def get_train_val_split(targets, val_size=1000, seed=12345):
+    """
+    Return indices of a train/val split, stratified by target.
+    """
+    np.random.seed(seed)
+    idxs = np.arange(len(targets))
+    np.random.shuffle(idxs)
+    tr_idxs = np.zeros(len(targets) - val_size, dtype=np.int32)
+    val_idxs = np.zeros(val_size, dtype=np.int32)
+    num_labels = max(targets) + 1
+    tr_ptr, val_ptr = 0, 0
+    for i in range(num_labels):
+        tr_strat = idxs[targets == i][val_size // num_labels:]
+        val_strat = idxs[targets == i][:val_size // num_labels]
+        tr_idxs[tr_ptr:tr_ptr + len(tr_strat)] = tr_strat
+        val_idxs[val_ptr:val_ptr + len(val_strat)] = val_strat
+        tr_ptr += len(tr_strat)
+        val_ptr += len(val_strat)
+    return tr_idxs, val_idxs
 
 def get_dim(name):
     if name.startswith("cifar"):
@@ -95,6 +114,22 @@ def get_dataset(name, split, precision):
                                 transform=transforms.Compose([transforms.ToTensor(),
                                                               precision_transform]))
 
+    if name == "cifar" and split == "train_train":
+        data = datasets.CIFAR10("./data/cifar_10", train=True, download=True,
+                                transform=transforms.Compose([transforms.RandomCrop(32, padding=4),
+                                                              transforms.RandomHorizontalFlip(),
+                                                              transforms.ToTensor(),
+                                                              precision_transform]))
+        train_idxs, val_idxs = get_train_val_split(np.array(data.targets), 1000)
+        return Subset(data, train_idxs)
+
+    if name == "cifar" and split == "train_val":
+        data = datasets.CIFAR10("./data/cifar_10", train=True, download=True,
+                                transform=transforms.Compose([transforms.ToTensor(),
+                                                              precision_transform]))
+        train_idxs, val_idxs = get_train_val_split(np.array(data.targets), 1000)
+        return Subset(data, val_idxs)
+
     if name == "cifar100" and split == "train":
         return datasets.CIFAR100("./data/cifar_100", train=True, download=True,
                                  transform=transforms.Compose([transforms.RandomCrop(32, padding=4),
@@ -106,6 +141,30 @@ def get_dataset(name, split, precision):
         return datasets.CIFAR100("./data/cifar_100", train=False, download=True,
                                  transform=transforms.Compose([transforms.ToTensor(),
                                                                precision_transform]))
+
+    if name == "cifar100" and split == "train_train":
+        data = datasets.CIFAR100("./data/cifar_100", train=True, download=True,
+                                 transform=transforms.Compose([transforms.RandomCrop(32, padding=4),
+                                                               transforms.RandomHorizontalFlip(),
+                                                               transforms.ToTensor(),
+                                                               precision_transform]))
+        train_idxs, val_idxs = get_train_val_split(np.array(data.targets), 1000)
+        return Subset(data, train_idxs)
+
+    if name == "cifar100" and split == "train_val":
+        data = datasets.CIFAR100("./data/cifar_100", train=True, download=True,
+                                 transform=transforms.Compose([transforms.ToTensor(),
+                                                               precision_transform]))
+        train_idxs, val_idxs = get_train_val_split(np.array(data.targets), 1000)
+        return Subset(data, val_idxs)
+
+    if name.startswith("cifar100c") and split == "test":
+        _, corruption_name, corruption_severity = name.split("-")
+        return CIFAR100CDataset(f"/mnt/vlgrounding/cifar_100_c/{corruption_name}.npy",
+                                f"/mnt/vlgrounding/cifar_100_c/labels.npy",
+                                int(corruption_severity),
+                                transform=transforms.Compose([transforms.ToTensor(),
+                                                              precision_transform]))
 
     if name == "imagenet" and split == "train":
         return ZipData("/mnt/imagenet/train.zip", "/mnt/imagenet/train_map.txt",
@@ -209,4 +268,29 @@ class CIFAR10SelfTrained(Dataset):
 
     def __len__(self):
         return len(self.dataset["extrapolated_targets"])
+
+
+class CIFAR100CDataset(Dataset):
+    """
+    Test split only
+    """
+    def __init__(self, x_path, y_path, severity=1, transform=None, target_transform=None):
+        self.x = np.load(x_path)
+        self.y = np.load(y_path)
+        start_idx = (severity - 1) * 10000
+        end_idx = severity * 10000
+        self.x = self.x[start_idx:end_idx]
+        self.y = self.y[start_idx:end_idx]
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __getitem__(self, index):
+        img, target = self.x[index], self.y[index]
+        img = Image.fromarray(img)
+        img = self.transform(img) if self.transform is not None else img
+        target = self.target_transform(target) if self.target_transform is not None else target
+        return img, target
+
+    def __len__(self):
+        return len(self.x)
 
