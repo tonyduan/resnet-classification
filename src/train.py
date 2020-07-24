@@ -3,21 +3,20 @@ import pathlib
 import pickle
 import os
 import numpy as np
+import pandas as pd
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from argparse import ArgumentParser
 from collections import defaultdict
 from torchnet import meter
 from torch.distributions import Categorical, kl_divergence
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from src.attacks import *
-from src.scores import *
-from src.calib import *
-from src.mixup import *
+from torch.utils.data import Subset
+from src.attacks import fgsm_attack, pgd_attack
+from src.mixup import mixup_batch
 from src.models import *
-from src.datasets import get_dataset, get_dim
+from src.utils import split_hold_out_set
+from src.datasets import get_dataset, get_dataloader, get_num_labels
+from src.evaluate import evaluate_snapshot, bootstrap_snapshot
 
 
 if __name__ == "__main__":
@@ -31,13 +30,13 @@ if __name__ == "__main__":
     argparser.add_argument("--print-every", default=20, type=int)
     argparser.add_argument("--save-every", default=50, type=int)
     argparser.add_argument("--experiment-name", default="cifar", type=str)
-    argparser.add_argument("--precision", default="half", type=str)
+    argparser.add_argument("--precision", default="float", type=str)
     argparser.add_argument("--model", default="ResNet", type=str)
     argparser.add_argument("--dataset", default="cifar", type=str)
     argparser.add_argument("--eval-dataset", default=None, type=str)
     argparser.add_argument("--adversary", default=None, type=str)
-    argparser.add_argument("--eps", default=8/255, type=float)
-    argparser.add_argument("--mixup", action="store_true")
+    argparser.add_argument("--eps", default=8 / 255, type=float)
+    argparser.add_argument("--mixup", default=False, type=bool)
     argparser.add_argument("--ccat", action="store_true")
     argparser.add_argument("--weight-decay", default=1e-4, type=float)
     argparser.add_argument("--data-parallel", action="store_true")
@@ -52,26 +51,42 @@ if __name__ == "__main__":
     model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision)
     model = DataParallelWrapper(model) if args.data_parallel else model
 
-    train_dataset = get_dataset(args.dataset, "train", args.precision)
-    train_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size,
-                              num_workers=args.num_workers, pin_memory=False)
-    test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", args.precision)
-    test_loader = DataLoader(test_dataset, shuffle=False, batch_size=args.batch_size,
-                             num_workers=args.num_workers, pin_memory=False)
+    if not args.use_val_set:
 
-    all_loaders_and_datasets = ((train_loader, len(train_dataset), "train"),
-                                (test_loader, len(test_dataset), "test"))
+        train_dataset = get_dataset(args.dataset, "train", args.precision)
+        train_loader = get_dataloader(train_dataset, "train", args.batch_size, args.num_workers)
 
-    if args.use_val_set:
+        _, subset_idxs = split_hold_out_set(train_dataset.targets, 10000)
+        train_subset_dataset = Subset(train_dataset, list(subset_idxs))
+        train_subset_loader = get_dataloader(train_subset_dataset, "train",
+                                             args.batch_size, args.num_workers)
+
+        test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", args.precision)
+        test_loader = get_dataloader(test_dataset, "test", args.batch_size, args.num_workers)
+
+        eval_loaders_and_datasets = ((train_subset_loader, len(train_subset_dataset), "train"),
+                                     (test_loader, len(test_dataset), "test"))
+
+    else:
+
         train_dataset = get_dataset(args.dataset, "train_train", args.precision)
-        train_loader = DataLoader(train_dataset, shuffle=True, batch_size=args.batch_size,
-                                  num_workers=args.num_workers, pin_memory=False)
+        train_loader = get_dataloader(train_dataset, "train", args.batch_size, args.num_workers)
+
+        targets = np.array(train_dataset.dataset.targets)[train_dataset.indices]
+        _, subset_idxs = split_hold_out_set(targets, 10000)
+        train_subset_dataset = Subset(train_dataset, list(subset_idxs))
+        train_subset_loader = get_dataloader(train_subset_dataset, "train",
+                                             args.batch_size, args.num_workers)
+
         val_dataset = get_dataset(args.dataset, "train_val", args.precision)
-        val_loader = DataLoader(val_dataset, shuffle=False, batch_size=args.batch_size,
-                                num_workers=args.num_workers, pin_memory=False)
-        all_loaders_and_datasets = ((train_loader, len(train_dataset), "train"),
-                                    (val_loader, len(val_dataset), "val"),
-                                    (test_loader, len(test_dataset), "test"))
+        val_loader = get_dataloader(val_dataset, "val", args.batch_size, args.num_workers)
+
+        test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", args.precision)
+        test_loader = get_dataloader(test_dataset, "test", args.batch_size, args.num_workers)
+
+        eval_loaders_and_datasets = ((train_subset_loader, len(train_subset_dataset), "train"),
+                                     (val_loader, len(val_dataset), "val"),
+                                     (test_loader, len(test_dataset), "test"))
 
     optimizer = optim.SGD(model.parameters(),
                           lr=args.lr,
@@ -116,8 +131,8 @@ if __name__ == "__main__":
                 lambd = (1 - torch.min(eps / args.eps, torch.ones_like(eps))) ** 10
                 forecast_adv = model.forecast(model.forward(x[batch_cutoff:]))
                 loss_clean = model.loss(x_orig[:batch_cutoff], y[:batch_cutoff])
-                loss_adv = (lambd * model.loss(x[batch_cutoff:], y[batch_cutoff:]) +
-                            (1 - lambd) * kl_divergence(uniform_categorical, forecast_adv))
+                loss_adv = (lambd * model.loss(x[batch_cutoff:], y[batch_cutoff:])
+                            + (1 - lambd) * kl_divergence(uniform_categorical, forecast_adv))
                 loss = 0.5 * loss_clean.mean() + 0.5 * loss_adv.mean()
             else:
                 loss = model.loss(x, y).mean()
@@ -133,7 +148,7 @@ if __name__ == "__main__":
                             f"Loss: {train_loss_meter.value()[0]:.2f}\t"
                             f"Mins: {(time_meter.value() / 60):.2f}\t"
                             f"Experiment: {args.experiment_name}")
-                results["train_losses"].append(train_loss_meter.value()[0])
+                results["loss_curve"].append(train_loss_meter.value()[0])
                 train_loss_meter.reset()
 
         if (epoch + 1) % args.save_every == 0:
@@ -144,92 +159,49 @@ if __name__ == "__main__":
         annealer.step()
         model.eval()
 
-        for loader, size, prefix in all_loaders_and_datasets:
+        for loader, size, prefix in eval_loaders_and_datasets:
 
-            preds = np.zeros((size, get_num_labels(args.dataset)))
-            preds_adv = np.zeros((size, get_num_labels(args.dataset)))
-            logits = np.zeros((size, get_num_labels(args.dataset)))
-            logits_adv = np.zeros((size, get_num_labels(args.dataset)))
-            labels = np.zeros((size, get_num_labels(args.dataset)))
+            p = np.zeros((size, get_num_labels(args.dataset)))
+            p_adv = np.zeros((size, get_num_labels(args.dataset)))
+            p_logits = np.zeros((size, get_num_labels(args.dataset)))
+            p_logits_adv = np.zeros((size, get_num_labels(args.dataset)))
+            q = np.zeros((size, get_num_labels(args.dataset)))
 
             for i, (x, y) in enumerate(loader):
 
                 x, y = x.to(args.device), y.to(args.device)
 
                 lower, upper = i * args.batch_size, (i + 1) * args.batch_size
-                labels[lower:upper] = np.eye(get_num_labels(args.dataset))[y.cpu().data.numpy()]
-                preds[lower:upper] = model.forecast(model.forward(x)).probs.data.cpu().numpy()
-                logits[lower:upper] = model.forecast(model.forward(x)).logits.data.cpu().numpy()
+                q[lower:upper] = np.eye(get_num_labels(args.dataset))[y.cpu().data.numpy()]
+                p[lower:upper] = model.forecast(model.forward(x)).probs.data.cpu().numpy()
+                p_logits[lower:upper] = model.forecast(model.forward(x)).logits.data.cpu().numpy()
 
                 if args.adversary is not None:
+
                     x_adv = pgd_attack(model, x, y, eps=args.eps, steps=20)
-                    preds_adv[lower:upper] = model.forecast(model.forward(x_adv)).probs.data.cpu().numpy()
-                    logits_adv[lower:upper] = model.forecast(model.forward(x_adv)).logits.data.cpu().numpy()
+                    p_adv[lower:upper] = model.forecast(model.forward(x_adv)).probs.data.cpu().numpy()
+                    p_logits_adv[lower:upper] = model.forecast(model.forward(x_adv)).logits.data.cpu().numpy()
 
-            # marginal needed for discretization
-            rho = labels.mean(axis=0, keepdims=True)
+            for k, v in evaluate_snapshot(q, p, p_logits).items():
+                results[f"{prefix}_{k}"].append(v)
 
-            # accuracy
-            accuracy = (logits.argmax(axis=1) == labels.argmax(axis=1)).mean()
-
-            # top-label calibration
-            top_pred_labels = (logits.argmax(axis=1) == labels.argmax(axis=1)).astype(float)
-            top_pred_probs = preds.max(axis=1)
-            obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs, n_bins=15, raise_on_nan=False)
-            top_label_ece = calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=1)
-
-            # marginal calibration
-            obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(labels.ravel(), preds.ravel(), n_bins=15, raise_on_nan=False)
-            marginal_ece = calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=1)
-
-            pi, gamma, bin_cnts = discretize_multivar(labels, preds, n_bins=args.num_bins)
-            results[f"{prefix}_nll"].append(NLLScore.score(logits, labels, logits=True).mean())
-            results[f"{prefix}_nll_rel"].append(NLLScore.reliability(pi, gamma, bin_cnts))
-            results[f"{prefix}_nll_res"].append(NLLScore.resolution(pi, rho, bin_cnts))
-            results[f"{prefix}_nll_unc"].append(NLLScore.uncertainty(rho, np.sum(bin_cnts)))
-            results[f"{prefix}_brier"].append(BrierScore.score(preds, labels).mean())
-            results[f"{prefix}_brier_rel"].append(BrierScore.reliability(pi, gamma, bin_cnts))
-            results[f"{prefix}_brier_res"].append(BrierScore.resolution(pi, rho, bin_cnts))
-            results[f"{prefix}_brier_unc"].append(BrierScore.uncertainty(rho, np.sum(bin_cnts)))
-            results[f"{prefix}_acc"].append(accuracy)
-            results[f"{prefix}_toplabel_ece"].append(top_label_ece)
-            results[f"{prefix}_marginal_ece"].append(marginal_ece)
+            for k, v in bootstrap_snapshot(q, p, p_logits).items():
+                results[f"{prefix}_{k}"].append(v)
 
             if args.adversary is not None:
 
-                # accuracy
-                adv_accuracy = (logits_adv.argmax(axis=1) == labels.argmax(axis=1)).mean()
+                for k, v in evaluate_snapshot(q, p_adv, p_logits_adv).items():
+                    results[f"{prefix}_adv_{k}"].append(v)
 
-                # top-label calibration
-                top_pred_labels = (logits_adv.argmax(axis=1) == labels.argmax(axis=1)).astype(float)
-                top_pred_probs = preds_adv.max(axis=1)
-                obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(top_pred_labels, top_pred_probs, n_bins=15, raise_on_nan=False)
-                adv_top_label_ece = calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=1)
-
-                # marginal calibration
-                obs_cdfs, pred_cdfs, bin_cnts = calibration_curve(labels.ravel(), preds_adv.ravel(), n_bins=15, raise_on_nan=False)
-                adv_marginal_ece = calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=1)
-
-                pi, gamma, bin_cnts = discretize_multivar(labels, preds_adv, n_bins=args.num_bins)
-                results[f"{prefix}_adv_nll"].append(NLLScore.score(logits_adv, labels, logits=True).mean())
-                results[f"{prefix}_adv_nll_rel"].append(NLLScore.reliability(pi, gamma, bin_cnts))
-                results[f"{prefix}_adv_nll_res"].append(NLLScore.resolution(pi, rho, bin_cnts))
-                results[f"{prefix}_adv_nll_unc"].append(NLLScore.uncertainty(rho, np.sum(bin_cnts)))
-                results[f"{prefix}_adv_brier"].append(BrierScore.score(preds_adv, labels).mean())
-                results[f"{prefix}_adv_brier_rel"].append(BrierScore.reliability(pi, gamma, bin_cnts))
-                results[f"{prefix}_adv_brier_res"].append(BrierScore.resolution(pi, rho, bin_cnts))
-                results[f"{prefix}_adv_brier_unc"].append(BrierScore.uncertainty(rho, np.sum(bin_cnts)))
-                results[f"{prefix}_adv_acc"].append(adv_accuracy)
-                results[f"{prefix}_adv_toplabel_ece"].append(adv_top_label_ece)
-                results[f"{prefix}_adv_marginal_ece"].append(adv_marginal_ece)
+                for k, v in bootstrap_snapshot(q, p_adv, p_logits_adv).items():
+                    results[f"{prefix}_adv_{k}"].append(v)
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
     save_path = f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch"
     torch.save(model.state_dict(), save_path)
-    args_path = f"{args.output_dir}/{args.experiment_name}/args.pkl"
-    pickle.dump(args, open(args_path, "wb"))
 
-    for k, v in results.items():
-        save_path = f"{args.output_dir}/{args.experiment_name}/{k}.npy"
-        np.save(save_path, np.array(v))
+    with open(f"{args.output_dir}/{args.experiment_name}/args.pkl", "wb") as args_file:
+        pickle.dump(args, args_file)
 
+    df = pd.DataFrame(results)
+    df.to_csv(f"{args.output_dir}/{args.experiment_name}/results.csv", index=False)

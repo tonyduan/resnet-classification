@@ -1,28 +1,37 @@
 import numpy as np
-from sklearn.cluster import KMeans, AgglomerativeClustering
+import scipy as sp
+import scipy.cluster
+import scipy.spatial
 
 
-def discretize_multivar(q, p, n_bins=20):
+def discretize_multivar(q, p):
     """
     Partition the simplex with K-Means clustering.
 
     Notice that we can recover the clusters by running something like the following.
 
-    >>> obs, pred, bin_cnts = discretize_multivar(labels_one_hot, preds, n_bins=100)
+    Returns
+    -------
+    pi: observed in each bin
+    gamma: predicted in each bin
+
+    >>> obs, pred, bin_cnts = discretize_multivar(labels_one_hot, preds)
     >>> unique_bins = np.unique(np.round(pred, 3), axis=0)
     """
-    #kmeans = KMeans(n_clusters=n_bins, init="k-means++")
-    #kmeans.fit(p)
-    clustering = AgglomerativeClustering(n_clusters=n_bins)
-    clustering.fit(p)
-    bin_ids = clustering.labels_
+    n_categories = p.shape[1]
+    clusters_init = np.r_[np.eye(n_categories), np.ones((1, n_categories)) / n_categories]
+    for i in range(n_categories + 1):
+        clusters_init[i] = p[np.linalg.norm(p - clusters_init[i], axis=1).argmin()]
 
-    pred = np.vstack([p[bin_ids == i].mean(axis=0) for i in range(n_bins)])
-    obs = np.vstack([q[bin_ids == i].mean(axis=0) for i in range(n_bins)])
-    bin_cnts = np.bincount(bin_ids, minlength=n_bins)
+    gamma, distortion = sp.cluster.vq.kmeans(p, clusters_init)
+    bin_ids = sp.spatial.distance.cdist(p, gamma).argmin(axis=1)
+    #bin_cnts = np.bincount(bin_ids)
+
+    pi = np.vstack([q[bin_ids == i].mean(axis=0) for i in range(n_categories + 1)])
+    bin_cnts = np.bincount(bin_ids, minlength=n_categories + 1)
     assert np.all(bin_cnts > 0)
 
-    return obs, pred, bin_cnts
+    return pi, gamma, bin_cnts
 
 #
 #def discretize_multivar(q, p, n_bins=20):
