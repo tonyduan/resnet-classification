@@ -12,7 +12,8 @@ def temperature_scale(labels, logits):
 
     Parameters
     ----------
-    labels:
+    labels: (m, n) array of one-hot labels
+    logits: (m, n) array of predicted logits
 
     Returns
     -------
@@ -32,6 +33,18 @@ def temperature_scale(labels, logits):
 def calibration_curve(labels, preds, n_bins=15, eps=1e-8, raise_on_nan=True):
     """
     Returns calibration curve at the pre-specified number of bins.
+
+    Parameters
+    ----------
+    labels: (m,)-length array of binary labels in {0, 1}
+    preds: (m,)-length array of binary predictions in [0, 1]
+    n_bins: integer, number of bins over [0,1] (discretized uniformly)
+    eps: float, for numerical stability
+    raise_on_nan: boolean, if True will raise error if a bin is empty
+                           if False returns without error and presumably weighted to zero by a
+                           downstream averaging procedure like in calibration_error
+
+    Returns
     -------
     obs_cdfs: (n_bins,)
     pred_cdfs: (n_bins,)
@@ -56,15 +69,18 @@ def calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=2, n_mc_samples=1000):
 
     Parameters
     ----------
-
+    obs_cdfs: (n_bins,)-length array of observed cdfs in each bin
+    pred_cdfs: (n_bins,)-length array of predicted cdfs in each bin
+    bin_cnts: (n_bins,)-length array of counts, for averaging
     p: either 1 or 2 for L1 or L2 calibration error, note L1 corresponds to well-known ECE
+    n_mc_samples: integer, used for bootstrap de-biasing of L1 calibration error
 
     Returns
     -------
-
+    calibration_error: de-biased L-p calibration error
     """
     if p == 2:
-        bin_cnts = np.clip(bin_cnts, a_min=2, a_max=None)
+        bin_cnts = np.clip(bin_cnts, a_min=2, a_max=None)  # a bit hacky, but prevents nans
         per_bin_calib = (obs_cdfs - pred_cdfs) ** 2 - obs_cdfs * (1 - obs_cdfs) / (bin_cnts - 1)
         return np.average(per_bin_calib, weights=bin_cnts) ** 0.5
     elif p == 1:
@@ -76,6 +92,7 @@ def calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=2, n_mc_samples=1000):
         mc_calib = np.mean(np.average(np.abs(obs_cdfs - mc_samples), axis=0, weights=bin_cnts))
         return plugin_calib - (mc_calib - plugin_calib)
     raise ValueError
+
 
 def plot_calibration_curve(obs_cdfs, pred_cdfs):
     plt.figure(figsize=(5, 5))

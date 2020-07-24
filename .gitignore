@@ -2,8 +2,8 @@ data/*/*
 ckpts/*/*
 bk/
 out/
-jobs/
 __pycache__
 phillytools/
 *.pyc
 *.swp
+*.npy

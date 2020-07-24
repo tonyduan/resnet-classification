@@ -96,8 +96,9 @@ if __name__ == "__main__":
     annealer = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.num_epochs)
 
     time_meter = meter.TimeMeter(unit=False)
-    train_loss_meter = meter.AverageValueMeter()
+    loss_meter = meter.AverageValueMeter()
 
+    loss_curve = []
     results = defaultdict(list)
 
     # default to 2x the number of output categories
@@ -140,16 +141,16 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            train_loss_meter.add(loss.cpu().data.numpy(), n=1)
+            loss_meter.add(loss.cpu().data.numpy(), n=1)
 
             if i % args.print_every == 0:
                 logger.info(f"Epoch: {epoch + 1}\t"
                             f"Itr: {i} / {len(train_loader)}\t"
-                            f"Loss: {train_loss_meter.value()[0]:.2f}\t"
+                            f"Loss: {loss_meter.value()[0]:.2f}\t"
                             f"Mins: {(time_meter.value() / 60):.2f}\t"
                             f"Experiment: {args.experiment_name}")
-                results["loss_curve"].append(train_loss_meter.value()[0])
-                train_loss_meter.reset()
+                loss_curve.append(loss_meter.value()[0])
+                loss_meter.reset()
 
         if (epoch + 1) % args.save_every == 0:
             save_path = f"{args.output_dir}/{args.experiment_name}/{epoch + 1}/"
@@ -197,8 +198,9 @@ if __name__ == "__main__":
                     results[f"{prefix}_adv_{k}"].append(v)
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
-    save_path = f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch"
-    torch.save(model.state_dict(), save_path)
+
+    np.save(f"{args.output_dir}/loss_curve.npy", np.array(loss_curve))
+    torch.save(model.state_dict(), f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch")
 
     with open(f"{args.output_dir}/{args.experiment_name}/args.pkl", "wb") as args_file:
         pickle.dump(args, args_file)
