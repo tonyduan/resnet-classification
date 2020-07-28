@@ -36,11 +36,10 @@ if __name__ == "__main__":
     argparser.add_argument("--eval-dataset", default=None, type=str)
     argparser.add_argument("--adversary", default=None, type=str)
     argparser.add_argument("--eps", default=8 / 255, type=float)
-    argparser.add_argument("--mixup", default=False, type=bool)
+    argparser.add_argument("--mixup", default=0., type=float)
     argparser.add_argument("--ccat", action="store_true")
     argparser.add_argument("--weight-decay", default=1e-4, type=float)
     argparser.add_argument("--data-parallel", action="store_true")
-    argparser.add_argument("--num-bins", default=None, type=int)
     argparser.add_argument("--use-val-set", action="store_true")
     argparser.add_argument('--output-dir', type=str, default=os.getenv("PT_OUTPUT_DIR"))
     args = argparser.parse_args()
@@ -54,15 +53,15 @@ if __name__ == "__main__":
     if not args.use_val_set:
 
         train_dataset = get_dataset(args.dataset, "train", args.precision)
-        train_loader = get_dataloader(train_dataset, "train", args.batch_size, args.num_workers)
+        train_loader = get_dataloader(train_dataset, True, args.batch_size, args.num_workers)
 
         _, subset_idxs = split_hold_out_set(train_dataset.targets, 10000)
         train_subset_dataset = Subset(train_dataset, list(subset_idxs))
-        train_subset_loader = get_dataloader(train_subset_dataset, "train",
+        train_subset_loader = get_dataloader(train_subset_dataset, False,
                                              args.batch_size, args.num_workers)
 
         test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", args.precision)
-        test_loader = get_dataloader(test_dataset, "test", args.batch_size, args.num_workers)
+        test_loader = get_dataloader(test_dataset, False, args.batch_size, args.num_workers)
 
         eval_loaders_and_datasets = ((train_subset_loader, len(train_subset_dataset), "train"),
                                      (test_loader, len(test_dataset), "test"))
@@ -70,19 +69,19 @@ if __name__ == "__main__":
     else:
 
         train_dataset = get_dataset(args.dataset, "train_train", args.precision)
-        train_loader = get_dataloader(train_dataset, "train", args.batch_size, args.num_workers)
+        train_loader = get_dataloader(train_dataset, True, args.batch_size, args.num_workers)
 
         targets = np.array(train_dataset.dataset.targets)[train_dataset.indices]
         _, subset_idxs = split_hold_out_set(targets, 10000)
         train_subset_dataset = Subset(train_dataset, list(subset_idxs))
-        train_subset_loader = get_dataloader(train_subset_dataset, "train",
+        train_subset_loader = get_dataloader(train_subset_dataset, False,
                                              args.batch_size, args.num_workers)
 
         val_dataset = get_dataset(args.dataset, "train_val", args.precision)
-        val_loader = get_dataloader(val_dataset, "val", args.batch_size, args.num_workers)
+        val_loader = get_dataloader(val_dataset, False, args.batch_size, args.num_workers)
 
         test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", args.precision)
-        test_loader = get_dataloader(test_dataset, "test", args.batch_size, args.num_workers)
+        test_loader = get_dataloader(test_dataset, False, args.batch_size, args.num_workers)
 
         eval_loaders_and_datasets = ((train_subset_loader, len(train_subset_dataset), "train"),
                                      (val_loader, len(val_dataset), "val"),
@@ -100,10 +99,6 @@ if __name__ == "__main__":
 
     loss_curve = []
     results = defaultdict(list)
-
-    # default to 2x the number of output categories
-    if args.num_bins is None:
-        args.num_bins = 2 * get_num_labels(args.dataset)
 
     if args.ccat:
         uniform_categorical = Categorical(probs=torch.ones(get_num_labels(args.dataset),
@@ -123,8 +118,8 @@ if __name__ == "__main__":
             elif args.adversary == "pgd":
                 x = pgd_attack(model, x, y, eps=args.eps, steps=10)
 
-            if args.mixup:
-                x, y, w = mixup_batch(x, y)
+            if args.mixup >= 0.:
+                x, y, w = mixup_batch(x, y, alpha=args.mixup)
                 loss = model.loss(x, y, sample_weights=w).mean()
             elif args.ccat:
                 batch_cutoff = len(x) // 2
@@ -189,6 +184,7 @@ if __name__ == "__main__":
             for k, v in bootstrap_snapshot(q, p, p_logits).items():
                 results[f"{prefix}_{k}"].append(v)
 
+
             if args.adversary is not None:
 
                 for k, v in evaluate_snapshot(q, p_adv, p_logits_adv).items():
@@ -199,7 +195,7 @@ if __name__ == "__main__":
 
     pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
 
-    np.save(f"{args.output_dir}/loss_curve.npy", np.array(loss_curve))
+    np.save(f"{args.output_dir}/{args.experiment_name}/loss_curve.npy", np.array(loss_curve))
     torch.save(model.state_dict(), f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch")
 
     with open(f"{args.output_dir}/{args.experiment_name}/args.pkl", "wb") as args_file:

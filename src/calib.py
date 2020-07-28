@@ -80,17 +80,19 @@ def calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=2, n_mc_samples=1000):
     calibration_error: de-biased L-p calibration error
     """
     if p == 2:
-        bin_cnts = np.clip(bin_cnts, a_min=2, a_max=None)  # a bit hacky, but prevents nans
-        per_bin_calib = (obs_cdfs - pred_cdfs) ** 2 - obs_cdfs * (1 - obs_cdfs) / (bin_cnts - 1)
+        cnts_clip = np.clip(bin_cnts, a_min=2, a_max=None)  # a bit hacky, but prevents nans
+        per_bin_calib = (obs_cdfs - pred_cdfs) ** 2 - obs_cdfs * (1 - obs_cdfs) / (cnts_clip - 1)
         return np.average(per_bin_calib, weights=bin_cnts) ** 0.5
     elif p == 1:
         plugin_calib = np.average(np.abs(obs_cdfs - pred_cdfs), weights=bin_cnts)
-        obs_cdfs = obs_cdfs[:, np.newaxis]
-        mc_samples = np.random.randn(len(bin_cnts), n_mc_samples)
-        bin_cnts = np.clip(bin_cnts, a_min=1, a_max=None)
-        mc_samples = obs_cdfs * (1 - obs_cdfs) / bin_cnts[:, np.newaxis] * mc_samples + obs_cdfs
-        mc_calib = np.mean(np.average(np.abs(obs_cdfs - mc_samples), axis=0, weights=bin_cnts))
-        return plugin_calib - (mc_calib - plugin_calib)
+        return plugin_calib
+#        obs_cdfs = obs_cdfs[:, np.newaxis]
+#        cnts_clip = np.clip(bin_cnts, a_min=1, a_max=None)
+#        mc_samples = np.random.randn(len(bin_cnts), n_mc_samples)
+#        mc_samples *= (obs_cdfs * (1 - obs_cdfs) / cnts_clip[:, np.newaxis]) ** 0.5
+#        mc_samples += obs_cdfs
+#        mc_calib = np.mean(np.average(np.abs(obs_cdfs - mc_samples), axis=0, weights=bin_cnts))
+#        return plugin_calib - (mc_calib - plugin_calib)
     raise ValueError
 
 

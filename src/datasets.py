@@ -22,9 +22,8 @@ class PrecisionTransform(object):
             return x.double()
 
 
-def get_dataloader(dataset, split, batch_size, num_workers):
-    return DataLoader(dataset, shuffle=(split == "train"), batch_size=batch_size,
-                      num_workers=num_workers, pin_memory=False)
+def get_dataloader(dataset, shuffle, batch_size, num_workers):
+    return DataLoader(dataset, shuffle=shuffle, batch_size=batch_size, num_workers=num_workers)
 
 
 def get_dim(name):

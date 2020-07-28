@@ -24,30 +24,43 @@ if __name__ == "__main__":
 
     for experiment_name in experiment_names:
 
-        experiment_args = pickle.load(open(f"{args.dir}/{experiment_name}/args.pkl", "rb"))
-
-        for split, suffix in itertools.product(("train", "test"), ("", "acc", "res", "rel", "unc")):
-
-            if suffix == "":
-                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{args.score}.npy")
-                df["score"].extend(vector)
-            elif suffix == "acc":
-                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{suffix}.npy")
-                df["score"].extend(vector)
+        experiment_df = pd.read_csv(f"{args.dir}/{experiment_name}/results.csv")
+        for split, interval, key in itertools.product(("train", "val", "test"),
+                                                        ("", "lower", "upper"),
+                                                        ("nll", "acc", "toplabel_ece", "consistency_toplabel_ece")):
+            if interval == "":
+                col = f"{split}_{key}"
             else:
-                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{args.score}_{suffix}.npy")
-                df["score"].extend(vector)
+                col = f"{split}_{interval}_{key}"
 
-            suffix = "score" if suffix == "" else suffix
-            df["experiment"].extend([experiment_name] * len(vector))
-            df["measure"].extend([suffix] * len(vector))
-            df["split"].extend([split] * len(vector))
-            df["epoch"].extend(np.arange(len(vector)))
-            #df["wd"].extend([float(experiment_args.weight_decay)] * len(vector))
+            df["experiment"].extend([experiment_name] * len(experiment_df))
+            df["interval"].extend([interval] * len(experiment_df))
+            df["split"].extend([split] * len(experiment_df))
+            df["key"].extend([key] * len(experiment_df))
+            df["value"].extend(experiment_df[col])
+            df["epoch"].extend(np.arange(len(experiment_df)) + 1)
 
-    df = pd.DataFrame(df)
-    df = df >> spread(X.measure, X.score) >> mutate(dec = X.unc + X.rel - X.res)
-    df = df >> gather("measure", "score", ["acc", "rel", "res", "score", "unc", "dec"])
+#        experiment_args = pickle.load(open(f"{args.dir}/{experiment_name}/args.pkl", "rb"))
+#
+#        for split, suffix in itertools.product(("train", "test"), ("", "acc", "res", "rel", "unc")):
+#
+#            if suffix == "":
+#                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{args.score}.npy")
+#                df["score"].extend(vector)
+#            elif suffix == "acc":
+#                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{suffix}.npy")
+#                df["score"].extend(vector)
+#            else:
+#                vector = np.load(f"{args.dir}/{experiment_name}/{split}_{args.score}_{suffix}.npy")
+#                df["score"].extend(vector)
+#
+#            suffix = "score" if suffix == "" else suffix
+#            df["experiment"].extend([experiment_name] * len(vector))
+#            df["measure"].extend([suffix] * len(vector))
+#            df["split"].extend([split] * len(vector))
+#            df["epoch"].extend(np.arange(len(vector)))
+#            #df["wd"].extend([float(experiment_args.weight_decay)] * len(vector))
+#
 
     sns.set_style("white", {"font.family": "Times New Roman"})
 
@@ -57,10 +70,12 @@ if __name__ == "__main__":
 #                       hue_order=("train", "test"),
 #                       palette=sns.color_palette("gray", 2), row_order=("score", "res", "rel", "acc"),
 #                       aspect=1.6, height=1.2, facet_kws={"sharex": True, "sharey": "row", "legend_out": True})
-    grid = sns.relplot(data=df, kind="line", x="epoch", y="score", row="measure", col="experiment", hue="split",
-                       hue_order=("train", "test"),
-                       palette=sns.color_palette("gray", 2), row_order=("score", "res", "rel", "acc"),
+    grid = sns.relplot(data=df, kind="line", x="epoch", y="value", row="key", col="experiment", hue="split",
+                       hue_order=("train", "test",), style="interval",
+                       palette=sns.color_palette("gray", 2), #row_order=("score", "res", "rel", "acc"),
                        aspect=1.6, height=1.2, facet_kws={"sharex": True, "sharey": "row", "legend_out": True})
+
+    plt.show()
 
     grid.set_xlabels("Epoch")
     grid.set_titles("{col_name}")

@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from torch.utils.data import Subset
 from tqdm import tqdm
 from src.models import *
-from src.datasets import get_num_labels, get_dataset, get_loader
+from src.datasets import get_num_labels, get_dataset, get_dataloader
 from src.attacks import pgd_attack
 from src.calib import temperature_scale
 
@@ -42,11 +42,11 @@ if __name__ == "__main__":
 
     test_dataset = get_dataset(args.dataset, "test", precision=args.precision)
     test_dataset = Subset(test_dataset, list(range(0, len(test_dataset), args.dataset_skip)))
-    test_loader = get_loader(test_dataset, "test", args.batch_size, args.num_workers)
+    test_loader = get_dataloader(test_dataset, False, args.batch_size, args.num_workers)
 
     if args.temperature_scale:
         val_dataset = get_dataset(args.dataset, "train_val", precision=args.precision)
-        val_loader = get_loader(val_dataset, "val", args.batch_size, args.num_workers)
+        val_loader = get_dataloader(val_dataset, False, args.batch_size, args.num_workers)
         val_logits = torch.zeros((len(val_dataset), get_num_labels(args.dataset)))
         val_labels = torch.zeros(len(val_dataset), dtype=torch.long)
         for i, (x, y) in tqdm(enumerate(val_loader), total=len(val_loader)):

@@ -118,16 +118,19 @@ if __name__ == "__main__":
 
     # save post-hoc final report
     eval_report = evaluate_snapshot(q, p, logits)
-    adv_eval_report = evaluate_snapshot(q, p_adv, logits_adv)
     bootstrap_report = bootstrap_snapshot(q, p, logits)
+    adv_eval_report = evaluate_snapshot(q, p_adv, logits_adv)
     adv_bootstrap_report = bootstrap_snapshot(q, p_adv, logits_adv)
 
     df = defaultdict(list)
 
-    for k, v in itertools.chain(eval_report.items(), adv_eval_report.items(),
-                                bootstrap_report.items(), adv_bootstrap_report.items()):
+    for k, v in itertools.chain(eval_report.items(), bootstrap_report.items()):
         df[k].append(v)
         print(f"== {k}: {v:.3f}")
+
+    for k, v in itertools.chain(adv_eval_report.items(), adv_bootstrap_report.items()):
+        df[f"adv_{k}"].append(v)
+        print(f"== adv_{k}: {v:.3f}")
 
     df = pd.DataFrame(df)
     df.to_csv(f"{args.output_dir}/{args.experiment_name}/eval_results.csv")
