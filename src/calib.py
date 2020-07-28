@@ -85,14 +85,11 @@ def calibration_error(obs_cdfs, pred_cdfs, bin_cnts, p=2, n_mc_samples=1000):
         return np.average(per_bin_calib, weights=bin_cnts) ** 0.5
     elif p == 1:
         plugin_calib = np.average(np.abs(obs_cdfs - pred_cdfs), weights=bin_cnts)
-        return plugin_calib
-#        obs_cdfs = obs_cdfs[:, np.newaxis]
-#        cnts_clip = np.clip(bin_cnts, a_min=1, a_max=None)
-#        mc_samples = np.random.randn(len(bin_cnts), n_mc_samples)
-#        mc_samples *= (obs_cdfs * (1 - obs_cdfs) / cnts_clip[:, np.newaxis]) ** 0.5
-#        mc_samples += obs_cdfs
-#        mc_calib = np.mean(np.average(np.abs(obs_cdfs - mc_samples), axis=0, weights=bin_cnts))
-#        return plugin_calib - (mc_calib - plugin_calib)
+        cnts_clip = np.clip(bin_cnts, a_min=1, a_max=None)
+        mc_samples = np.random.randn(n_mc_samples, len(bin_cnts))
+        mc_samples = mc_samples * (obs_cdfs * (1 - obs_cdfs) / cnts_clip) ** 0.5 + obs_cdfs
+        mc_calib = np.mean(np.average(np.abs(pred_cdfs - mc_samples), axis=1, weights=bin_cnts))
+        return plugin_calib - (mc_calib - plugin_calib)
     raise ValueError
 
 
