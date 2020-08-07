@@ -11,7 +11,7 @@ class BasicBlock(nn.Module):
 
         BasicBlock(x) = ReLU( x + Conv3x3( ReLU( Conv3x3(x) ) ) )
 
-    Batch norm follows each 3x3 convolution, and residual connection has a projection if
+    Batch norm follows each 3x3 convolution, and residual connection has a conv projection if
     the dimensionality changes (either due to striding or different in/out filters).
 
     Note the dimensionality of output equals dimensionality of input divided by stride.
@@ -56,17 +56,23 @@ class Bottleneck(nn.Module):
 
         Bottleneck(x) = ReLU( x + Conv1x1( ReLU( Conv3x3( ReLu( Conv1x1(x)) ) ) ) )
 
-    Batch norm follows each convolution, and residual connection has a projection if
+    Batch norm follows each convolution, and residual connection has a conv projection if
     the dimensionality changes (either due to striding or different in/out filters).
+
+    Additionally we implement grouped convolutions to support the ResNeXt architecture.
+
+    [Xie et al. CVPR 2017]
+
+    Here we set use grouped convolutions to reduce the computational cost of convolutions.
     """
     pre_activation = False
 
-    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, groups=1, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
+                               stride=stride, padding=1, groups=groups, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(out_filters)
@@ -265,8 +271,12 @@ class InvertedBottleneck(nn.Module):
 
         InvertedResidual(x) = x + Conv1x1( ReLU6( DepthWiseConv3x3( ReLU6( Conv1x1(x)) ) ) )
 
-    Batch norm follows each convolution, and we *remove* the residual connection if
-    the dimensionality changes (which occurs either due to striding or different in/out filters).
+    Batch norm follows each convolution.
+
+    Note a depth-wise convolution is identical to setting groups = out_filters.
+
+    Note we *remove* the residual connection if the dimensionality changes (which occurs either
+    due to striding or different in/out filters).
     """
     pre_activation = False
 

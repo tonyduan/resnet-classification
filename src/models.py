@@ -120,28 +120,28 @@ class ResNet(Classifier):
     """
     # == ImageNet models
     resnet18_layers = [
-        {"block": BasicBlock, "num_blocks": 2, "num_filters": 64},  # 64 x 56 x 56 output
-        {"block": BasicBlock, "num_blocks": 2, "num_filters": 128}, # 128 x 28 x 28 output
-        {"block": BasicBlock, "num_blocks": 2, "num_filters": 256}, # 256 x 14 x 14 output
-        {"block": BasicBlock, "num_blocks": 2, "num_filters": 512}, # 512 x 7 x 7 output
+        {"block": BasicBlock, "num_blocks": 2, "num_filters": 64, "squeeze": 4},  # 64 x 56 x 56 output
+        {"block": BasicBlock, "num_blocks": 2, "num_filters": 128, "squeeze": 4}, # 128 x 28 x 28 output
+        {"block": BasicBlock, "num_blocks": 2, "num_filters": 256, "squeeze": 4}, # 256 x 14 x 14 output
+        {"block": BasicBlock, "num_blocks": 2, "num_filters": 512, "squeeze": 4}, # 512 x 7 x 7 output
     ]
     resnet50_layers = [
-        {"block": Bottleneck, "num_blocks": 3, "num_filters": 256},  # 256 x 56 x 56 output
-        {"block": Bottleneck, "num_blocks": 4, "num_filters": 512},  # 512 x 28 x 28 output
-        {"block": Bottleneck, "num_blocks": 6, "num_filters": 1024}, # 1024 x 14 x 14 output
-        {"block": Bottleneck, "num_blocks": 3, "num_filters": 2048}, # 2048 x 7 x 7 output
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 256, "squeeze": 4},  # 256 x 56 x 56 output
+        {"block": Bottleneck, "num_blocks": 4, "num_filters": 512, "squeeze": 4},  # 512 x 28 x 28 output
+        {"block": Bottleneck, "num_blocks": 6, "num_filters": 1024, "squeeze": 4}, # 1024 x 14 x 14 output
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 2048, "squeeze": 4}, # 2048 x 7 x 7 output
+    ]
+    resnext50_32x4d_layers = [
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 256, "groups": 32, "squeeze": 2},
+        {"block": Bottleneck, "num_blocks": 4, "num_filters": 512, "groups": 32, "squeeze": 2},
+        {"block": Bottleneck, "num_blocks": 6, "num_filters": 1024, "groups": 32, "squeeze": 2},
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 2048, "groups": 32, "squeeze": 2},
     ]
     se_resnet50_layers = [
-        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 256},  # 256 x 56 x 56 output
-        {"block": SEBottleneck, "num_blocks": 4, "num_filters": 512},  # 512 x 28 x 28 output
-        {"block": SEBottleneck, "num_blocks": 6, "num_filters": 1024}, # 1024 x 14 x 14 output
-        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 2048}, # 2048 x 7 x 7 output
-    ]
-    wrn_50_2_layers = [
-        {"block": BottleneckV2, "num_blocks": 3, "num_filters": 256, "squeeze": 2},
-        {"block": BottleneckV2, "num_blocks": 4, "num_filters": 512, "squeeze": 2},
-        {"block": BottleneckV2, "num_blocks": 6, "num_filters": 1024, "squeeze": 2},
-        {"block": BottleneckV2, "num_blocks": 3, "num_filters": 2048, "squeeze": 2},
+        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 256, "squeeze": 4},  # 256 x 56 x 56 output
+        {"block": SEBottleneck, "num_blocks": 4, "num_filters": 512, "squeeze": 4},  # 512 x 28 x 28 output
+        {"block": SEBottleneck, "num_blocks": 6, "num_filters": 1024, "squeeze": 4}, # 1024 x 14 x 14 output
+        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 2048, "squeeze": 4}, # 2048 x 7 x 7 output
     ]
 
     # == CIFAR-10 models
