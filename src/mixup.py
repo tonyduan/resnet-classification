@@ -27,6 +27,6 @@ def mixup_batch(x, y, alpha=0.3):
     x = lambd * x + (1 - lambd) * x[idxs]
     x = torch.cat((x, x))
     y = torch.cat((y, y[idxs]))
-    w = torch.cat((2. * lambd * torch.ones(batch_size, device=x.device, dtype=x.dtype),
-                   2. * (1 - lambd) * torch.ones(batch_size, device=x.device, dtype=x.dtype)))
+    w = torch.cat((torch.full((batch_size,), 2. * lambd, device=x.device, dtype=x.dtype),
+                   torch.full((batch_size,), 2. * (1 - lambd), device=x.device, dtype=x.dtype)))
     return x, y, w

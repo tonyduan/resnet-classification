@@ -20,7 +20,8 @@ def temperature_scale(labels, logits):
     T: scalar float for optimal temperature
     """
     T = nn.Parameter(torch.ones(1))
-    optimizer = torch.optim.LBFGS([T], lr=0.001, max_iter=100)
+    optimizer = torch.optim.LBFGS([T], lr=0.0001, max_iter=2000, tolerance_grad=1e-3,
+                                  line_search_fn="strong_wolfe")
     def closure():
         loss = F.cross_entropy(logits / T, labels, reduction="mean")
         loss.backward()

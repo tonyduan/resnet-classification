@@ -9,7 +9,6 @@ import torch.optim as optim
 from argparse import ArgumentParser
 from collections import defaultdict
 from torchnet import meter
-from torch.distributions import Categorical, kl_divergence
 from torch.utils.data import Subset
 from src.attacks import fgsm_attack, pgd_attack
 from src.mixup import mixup_batch
@@ -100,10 +99,6 @@ if __name__ == "__main__":
     loss_curve = []
     results = defaultdict(list)
 
-    if args.ccat:
-        uniform_categorical = Categorical(probs=torch.ones(get_num_labels(args.dataset),
-                                          device=args.device))
-
     for epoch in range(args.num_epochs):
 
         model.train()
@@ -118,18 +113,18 @@ if __name__ == "__main__":
             elif args.adversary == "pgd":
                 x = pgd_attack(model, x, y, eps=args.eps, steps=10)
 
-            if args.mixup >= 0.:
+            if args.mixup > 0.:
                 x, y, w = mixup_batch(x, y, alpha=args.mixup)
                 loss = model.loss(x, y, sample_weights=w).mean()
             elif args.ccat:
-                batch_cutoff = len(x) // 2
-                eps = (x_orig[batch_cutoff:] - x[batch_cutoff:]).norm(p=np.inf, dim=(1, 2, 3))
+                cutoff = len(x) // 2
+                eps = (x_orig[cutoff:] - x[cutoff:]).norm(p=np.inf, dim=(1, 2, 3))
                 lambd = (1 - torch.min(eps / args.eps, torch.ones_like(eps))) ** 10
-                forecast_adv = model.forecast(model.forward(x[batch_cutoff:]))
-                loss_clean = model.loss(x_orig[:batch_cutoff], y[:batch_cutoff])
-                loss_adv = (lambd * model.loss(x[batch_cutoff:], y[batch_cutoff:])
-                            + (1 - lambd) * kl_divergence(uniform_categorical, forecast_adv))
-                loss = 0.5 * loss_clean.mean() + 0.5 * loss_adv.mean()
+                forecast_adv = model.forecast(model.forward(x[cutoff:]))
+                loss_clean = model.loss(x_orig[:cutoff], y[:cutoff])
+                loss_adv = -(lambd * forecast_adv.logits[torch.arange(cutoff), y[cutoff:]]
+                             + (1 - lambd) * forecast_adv.logits.mean(dim=1))
+                loss = 0.5 * (loss_clean.mean() + loss_adv.mean())
             else:
                 loss = model.loss(x, y).mean()
 
@@ -183,7 +178,6 @@ if __name__ == "__main__":
 
             for k, v in bootstrap_snapshot(q, p, p_logits).items():
                 results[f"{prefix}_{k}"].append(v)
-
 
             if args.adversary is not None:
 

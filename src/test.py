@@ -21,10 +21,12 @@ if __name__ == "__main__":
     argparser.add_argument("--eps", default=8 / 255, type=float)
     argparser.add_argument("--experiment-name", default="cifar", type=str)
     argparser.add_argument("--dataset", default="cifar", type=str)
+    argparser.add_argument("--eval-dataset", default=None, type=str)
     argparser.add_argument("--data-parallel", action="store_true")
     argparser.add_argument("--model", default="ResNet", type=str)
     argparser.add_argument("--precision", default="float", type=str)
     argparser.add_argument("--temperature-scale", action="store_true")
+    argparser.add_argument("--adv-temperature-scale", action="store_true")
     argparser.add_argument("--output-dir", type=str, default=os.getenv("PT_OUTPUT_DIR"))
     argparser.add_argument("--save-path", type=str, default=None)
     args = argparser.parse_args()
@@ -40,7 +42,7 @@ if __name__ == "__main__":
     model.load_state_dict(saved_dict)
     model.eval()
 
-    test_dataset = get_dataset(args.dataset, "test", precision=args.precision)
+    test_dataset = get_dataset(args.eval_dataset or args.dataset, "test", precision=args.precision)
     test_dataset = Subset(test_dataset, list(range(0, len(test_dataset), args.dataset_skip)))
     test_loader = get_dataloader(test_dataset, False, args.batch_size, args.num_workers)
 
@@ -51,6 +53,8 @@ if __name__ == "__main__":
         val_labels = torch.zeros(len(val_dataset), dtype=torch.long)
         for i, (x, y) in tqdm(enumerate(val_loader), total=len(val_loader)):
             x, y = x.to(args.device), y.to(args.device)
+            if args.adv_temperature_scale:
+                x = pgd_attack(model, x, y, eps=args.eps)
             lower, upper = i * args.batch_size, (i + 1) * args.batch_size
             val_logits[lower:upper] = model.forecast(model.forward(x)).logits.data
             val_labels[lower:upper] = y.data

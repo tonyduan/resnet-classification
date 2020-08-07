@@ -72,7 +72,7 @@ def evaluate_snapshot(q, p, p_logits):
     }
 
 
-def bootstrap_snapshot(q, p, p_logits, num_samples=1000):
+def bootstrap_snapshot(q, p, p_logits, num_samples=100):
 
     bootstrap_df = defaultdict(list)
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
         print(f"== adv_{k}: {v:.3f}")
 
     df = pd.DataFrame(df)
-    df.to_csv(f"{args.output_dir}/{args.experiment_name}/eval_results.csv")
+    df.to_csv(f"{args.output_dir}/{args.experiment_name}/eval_results.csv", index=False)
 
     if not args.save_examples:
         exit()
