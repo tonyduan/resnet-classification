@@ -17,10 +17,12 @@ class BasicBlock(nn.Module):
     Note the dimensionality of output equals dimensionality of input divided by stride.
         stride = 1: (32 x 32) => (32 x 32)
         stride = 2: (32 x 32) => (16 x 16)
+
+    Finally we note we implement as well an optional Squeeze and Excitation layer [Hu et al. 2018].
     """
     pre_activation = False
 
-    def __init__(self, in_filters, out_filters, stride=1, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, se=False, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
@@ -28,6 +30,7 @@ class BasicBlock(nn.Module):
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_filters)
+        self.se = SELayer(out_filters) if se else nn.Identity()
         if stride == 1 and in_filters == out_filters:
             self.shortcut = nn.Identity()
         else:
@@ -41,6 +44,7 @@ class BasicBlock(nn.Module):
         out = F.relu(out)
         out = self.conv2(out)
         out = self.bn2(out)
+        out = self.se(out)
         out = out + self.shortcut(x)
         out = F.relu(out)
         return out
@@ -64,10 +68,12 @@ class Bottleneck(nn.Module):
     [Xie et al. CVPR 2017]
 
     Here we set use grouped convolutions to reduce the computational cost of convolutions.
+
+    Finally we implement optional Squeeze and Excitation layers [Hu et al. 2018].
     """
     pre_activation = False
 
-    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, groups=1, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, groups=1, se=False, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
@@ -76,6 +82,7 @@ class Bottleneck(nn.Module):
         self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(out_filters)
+        self.se = SELayer(out_filters) if se else nn.Identity()
         if stride == 1 and in_filters == out_filters:
             self.shortcut = nn.Identity()
         else:
@@ -92,6 +99,7 @@ class Bottleneck(nn.Module):
         out = F.relu(out)
         out = self.conv3(out)
         out = self.bn3(out)
+        out = self.se(out)
         out = out + self.shortcut(x)
         out = F.relu(out)
         return out
@@ -131,7 +139,7 @@ class BasicBlockV2(nn.Module):
 
 class BottleneckV2(nn.Module):
     """
-    Bottleneck V2: re-ordered version of BasicBlock. [He et al. ECCV 2016]
+    Bottleneck V2: re-ordered version of Bottleneck. [He et al. ECCV 2016]
     """
     pre_activation = True
 
@@ -167,7 +175,8 @@ class BottleneckV2(nn.Module):
 
 class SELayer(nn.Module):
     """
-    Squeeze and Excitation Layer: global average pool, then layers to calculate channel weights.
+    Squeeze and Excitation Layer: global average pool across the spatial dimensions, then
+    a simple multi-layer perceptron (implemented via 1x1 convolutions) to calculate channel weights.
 
     [Hu et al. CVPR 2018]
 
@@ -189,79 +198,6 @@ class SELayer(nn.Module):
         return weights * x
 
 
-class SEBasicBlock(nn.Module):
-    """
-    Squeeze and Excitation BasicBlock: adds an SELayer to computed residuals. [Hu et al. 2018].
-    """
-    pre_activation = False
-
-    def __init__(self, in_filters, out_filters, stride=1, reduction=16, **kwargs):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_filters)
-        self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
-                               stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters)
-        self.se = SELayer(out_filters, reduction)
-        if stride == 1 and in_filters == out_filters:
-            self.shortcut = nn.Identity()
-        else:
-            self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
-                                                    stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
-
-
-    def forward(self, x):
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = F.relu(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.se(out)
-        out = out + self.shortcut(x)
-        out = F.relu(out)
-        return out
-
-
-class SEBottleneck(nn.Module):
-    """
-    Squeeze and Excitation Bottleneck: adds an SELayer to the computed residuals. [Hu et al. 2018].
-    """
-    pre_activation = False
-
-    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, reduction=16, **kwargs):
-        super().__init__()
-        self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
-        self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
-        self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_filters)
-        self.se = SELayer(out_filters, reduction)
-        if stride == 1 and in_filters == out_filters:
-            self.shortcut = nn.Identity()
-        else:
-            self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
-                                                    stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
-
-    def forward(self, x):
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = F.relu(out)
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = F.relu(out)
-        out = self.conv3(out)
-        out = self.bn3(out)
-        out = self.se(out)
-        out = out + self.shortcut(x)
-        out = F.relu(out)
-        return out
-
-
 class InvertedBottleneck(nn.Module):
     """
     Inverted Bottleneck block: (1) use an expansion factor instead of a squeeze factor,
@@ -271,12 +207,12 @@ class InvertedBottleneck(nn.Module):
 
         InvertedResidual(x) = x + Conv1x1( ReLU6( DepthWiseConv3x3( ReLU6( Conv1x1(x)) ) ) )
 
-    Batch norm follows each convolution.
+    Batch norm follows each convolution. Also we use ReLU6 which maxes out at values 6.
 
     Note a depth-wise convolution is identical to setting groups = out_filters.
 
-    Note we *remove* the residual connection if the dimensionality changes (which occurs either
-    due to striding or different in/out filters).
+    Note unlike a traditional Bottleneck we *remove* the residual connection if the dimensionality
+    changes (which occurs either due to striding or different in/out filters).
     """
     pre_activation = False
 
@@ -305,4 +241,3 @@ class InvertedBottleneck(nn.Module):
         out = self.bn3(out)
         out = out + self.shortcut(x) if self.shortcut is not None else out
         return out
-

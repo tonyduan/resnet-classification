@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from src.datasets import *
 from src.blocks import BasicBlock, Bottleneck, BasicBlockV2, BottleneckV2
-from src.blocks import SEBasicBlock, SEBottleneck
 from src.blocks import InvertedBottleneck
 
 
@@ -77,7 +76,7 @@ class NormalizeLayer(nn.Module):
         self.sigma = nn.Parameter(torch.tensor(sigma).reshape(dim), requires_grad=False)
 
     def forward(self, x):
-        return (x - self.mu) /self.sigma
+        return (x - self.mu) / self.sigma
 
 
 class LinearModel(Classifier):
@@ -138,10 +137,10 @@ class ResNet(Classifier):
         {"block": Bottleneck, "num_blocks": 3, "num_filters": 2048, "groups": 32, "squeeze": 2},
     ]
     se_resnet50_layers = [
-        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 256, "squeeze": 4},  # 256 x 56 x 56 output
-        {"block": SEBottleneck, "num_blocks": 4, "num_filters": 512, "squeeze": 4},  # 512 x 28 x 28 output
-        {"block": SEBottleneck, "num_blocks": 6, "num_filters": 1024, "squeeze": 4}, # 1024 x 14 x 14 output
-        {"block": SEBottleneck, "num_blocks": 3, "num_filters": 2048, "squeeze": 4}, # 2048 x 7 x 7 output
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 256, "squeeze": 4, "se": True},  # 256 x 56 x 56 output
+        {"block": Bottleneck, "num_blocks": 4, "num_filters": 512, "squeeze": 4, "se": True},  # 512 x 28 x 28 output
+        {"block": Bottleneck, "num_blocks": 6, "num_filters": 1024, "squeeze": 4, "se": True}, # 1024 x 14 x 14 output
+        {"block": Bottleneck, "num_blocks": 3, "num_filters": 2048, "squeeze": 4, "se": True}, # 2048 x 7 x 7 output
     ]
 
     # == CIFAR-10 models
@@ -151,9 +150,9 @@ class ResNet(Classifier):
         {"block": BasicBlock, "num_blocks": 18, "num_filters": 64}, # 64 x 8 x 8 output
     ]
     se_resnet110_layers = [
-        {"block": SEBasicBlock, "num_blocks": 18, "num_filters": 16}, # 16 x 32 x 32 output
-        {"block": SEBasicBlock, "num_blocks": 18, "num_filters": 32}, # 32 x 16 x 16 output
-        {"block": SEBasicBlock, "num_blocks": 18, "num_filters": 64}, # 64 x 8 x 8 output
+        {"block": BasicBlock, "num_blocks": 18, "num_filters": 16, "se": True}, # 16 x 32 x 32 output
+        {"block": BasicBlock, "num_blocks": 18, "num_filters": 32, "se": True}, # 32 x 16 x 16 output
+        {"block": BasicBlock, "num_blocks": 18, "num_filters": 64, "se": True}, # 64 x 8 x 8 output
     ]
     wrn_40_2_layers = [
         {"block": BasicBlockV2, "num_blocks": 6, "num_filters": 32},  # 32 x 32 x 32 output
@@ -248,6 +247,7 @@ class ResNet(Classifier):
 class WRN_40_2(ResNet):
     def __init__(self, dataset, device, precision):
         super().__init__(dataset, device, precision, layers_config=ResNet.wrn_40_2_layers)
+
 
 class WRN_28_10(ResNet):
     def __init__(self, dataset, device, precision):
