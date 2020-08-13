@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from torchnet import meter
 from torch.utils.data import Subset
-from src.attacks import fgsm_attack, pgd_attack
+from src.attacks import fgsm_attack, pgd_attack, max_conf_attack
 from src.mixup import mixup_batch
 from src.models import *
 from src.utils import split_hold_out_set
@@ -31,12 +31,14 @@ if __name__ == "__main__":
     argparser.add_argument("--experiment-name", default="cifar", type=str)
     argparser.add_argument("--precision", default="float", type=str)
     argparser.add_argument("--model", default="ResNet", type=str)
+    argparser.add_argument("--norm-layer", default="batch_norm", type=str)
     argparser.add_argument("--dataset", default="cifar", type=str)
     argparser.add_argument("--eval-dataset", default=None, type=str)
     argparser.add_argument("--adversary", default=None, type=str)
     argparser.add_argument("--eps", default=8 / 255, type=float)
     argparser.add_argument("--mixup", default=0., type=float)
     argparser.add_argument("--ccat", action="store_true")
+    argparser.add_argument("--adv-balance", action="store_true")
     argparser.add_argument("--weight-decay", default=1e-4, type=float)
     argparser.add_argument("--data-parallel", action="store_true")
     argparser.add_argument("--use-val-set", action="store_true")
@@ -46,7 +48,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision)
+    model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision,
+                             norm_layer=args.norm_layer)
     model = DataParallelWrapper(model) if args.data_parallel else model
 
     if not args.use_val_set:
@@ -54,7 +57,8 @@ if __name__ == "__main__":
         train_dataset = get_dataset(args.dataset, "train", args.precision)
         train_loader = get_dataloader(train_dataset, True, args.batch_size, args.num_workers)
 
-        _, subset_idxs = split_hold_out_set(train_dataset.targets, 10000)
+        #_, subset_idxs = split_hold_out_set(train_dataset.targets, 10000)
+        subset_idxs = np.random.choice(len(train_dataset), 10000, replace=False)
         train_subset_dataset = Subset(train_dataset, list(subset_idxs))
         train_subset_loader = get_dataloader(train_subset_dataset, False,
                                              args.batch_size, args.num_workers)
@@ -70,8 +74,9 @@ if __name__ == "__main__":
         train_dataset = get_dataset(args.dataset, "train_train", args.precision)
         train_loader = get_dataloader(train_dataset, True, args.batch_size, args.num_workers)
 
-        targets = np.array(train_dataset.dataset.targets)[train_dataset.indices]
-        _, subset_idxs = split_hold_out_set(targets, 10000)
+        #targets = np.array(train_dataset.dataset.targets)[train_dataset.indices]
+        #_, subset_idxs = split_hold_out_set(targets, 10000)
+        subset_idxs = np.random.choice(len(train_dataset), 10000, replace=False)
         train_subset_dataset = Subset(train_dataset, list(subset_idxs))
         train_subset_loader = get_dataloader(train_subset_dataset, False,
                                              args.batch_size, args.num_workers)
@@ -101,7 +106,7 @@ if __name__ == "__main__":
 
     for epoch in range(args.num_epochs):
 
-        model.train()
+        model = model.train()
 
         for i, (x, y) in enumerate(train_loader):
 
@@ -112,10 +117,13 @@ if __name__ == "__main__":
                 x = fgsm_attack(model, x, y, eps=args.eps, alpha=1.0)
             elif args.adversary == "pgd":
                 x = pgd_attack(model, x, y, eps=args.eps, steps=10)
+            elif args.adversary == "max_conf":
+                x = max_conf_attack(model, x, y, eps=args.eps, steps=10)
 
             if args.mixup > 0.:
                 x, y, w = mixup_batch(x, y, alpha=args.mixup)
                 loss = model.loss(x, y, sample_weights=w).mean()
+
             elif args.ccat:
                 cutoff = len(x) // 2
                 eps = (x_orig[cutoff:] - x[cutoff:]).norm(p=np.inf, dim=(1, 2, 3))
@@ -125,6 +133,13 @@ if __name__ == "__main__":
                 loss_adv = -(lambd * forecast_adv.logits[torch.arange(cutoff), y[cutoff:]]
                              + (1 - lambd) * forecast_adv.logits.mean(dim=1))
                 loss = 0.5 * (loss_clean.mean() + loss_adv.mean())
+
+            elif args.adv_balance:
+                cutoff = len(x) // 2
+                loss_clean = model.loss(x_orig[:cutoff], y[:cutoff])
+                loss_adv = model.loss(x[cutoff:], y[cutoff:])
+                loss = 0.5 * (loss_clean.mean() + loss_adv.mean())
+
             else:
                 loss = model.loss(x, y).mean()
 
@@ -148,7 +163,7 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), f"{save_path}/model_ckpt.torch")
 
         annealer.step()
-        model.eval()
+        model = model.eval()
 
         for loader, size, prefix in eval_loaders_and_datasets:
 
@@ -175,7 +190,6 @@ if __name__ == "__main__":
 
             for k, v in evaluate_snapshot(q, p, p_logits).items():
                 results[f"{prefix}_{k}"].append(v)
-
             for k, v in bootstrap_snapshot(q, p, p_logits).items():
                 results[f"{prefix}_{k}"].append(v)
 
@@ -183,12 +197,12 @@ if __name__ == "__main__":
 
                 for k, v in evaluate_snapshot(q, p_adv, p_logits_adv).items():
                     results[f"{prefix}_adv_{k}"].append(v)
-
                 for k, v in bootstrap_snapshot(q, p_adv, p_logits_adv).items():
                     results[f"{prefix}_adv_{k}"].append(v)
 
-    pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
+        print("Train NLL:", results["train_nll"][-1])
 
+    pathlib.Path(f"{args.output_dir}/{args.experiment_name}").mkdir(parents=True, exist_ok=True)
     np.save(f"{args.output_dir}/{args.experiment_name}/loss_curve.npy", np.array(loss_curve))
     torch.save(model.state_dict(), f"{args.output_dir}/{args.experiment_name}/model_ckpt.torch")
 

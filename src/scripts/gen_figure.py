@@ -17,6 +17,7 @@ if __name__ == "__main__":
     argparser.add_argument("--dir", type=str, default="ckpts")
     argparser.add_argument("--score", type=str, default="nll")
     argparser.add_argument("--adv", action="store_true")
+    argparser.add_argument("--eval", action="store_true")
     argparser.add_argument("--inspect", action="store_true")
     args = argparser.parse_args()
 
@@ -46,15 +47,21 @@ if __name__ == "__main__":
             df["value"].extend(experiment_df[col])
             df["epoch"].extend(np.arange(len(experiment_df)) + 1)
 
-        #experiment_eval_df = pd.read_csv(f"{args.dir}/{experiment_name}/eval_results.csv")
-        #for k, v in experiment_eval_df.items():
-        #    eval_df[k].append(v[0])
-        #eval_df["experiment"].append(experiment_name)
+        if args.eval:
+            experiment_eval_df = pd.read_csv(f"{args.dir}/{experiment_name}/eval_results.csv")
+            for k, v in experiment_eval_df.items():
+                eval_df[k].extend(list(v))
+            eval_df["experiment"].extend([experiment_name] * len(v))
 
     df = pd.DataFrame(df)
     df.to_csv(f"{args.dir}/df.csv")
-    #eval_df = pd.DataFrame(eval_df)
-    #eval_df.to_csv(f"{args.dir}/eval_df.csv")
+
+    if args.eval:
+        eval_df = pd.DataFrame(eval_df)
+        eval_df.to_csv(f"{args.dir}/eval_df.csv")
+        print_df = eval_df >> select(X.experiment, X.temperature_label, X.temperature, X.upper_toplabel_ece, X.pgd_upper_toplabel_ece, X.max_conf_upper_toplabel_ece) \
+                           >> arrange(X.temperature_label, X.experiment)
+        print(print_df)
 
     if args.inspect:
         breakpoint()

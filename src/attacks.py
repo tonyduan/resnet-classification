@@ -34,6 +34,39 @@ def project_onto_ball(x, eps, p=float("inf")):
     return x.view(original_shape)
 
 
+def max_conf_attack(model, x, y, eps, steps=20, adv=float("inf"), clamp=(0., 1.)):
+    """
+    Attack a model to maximize confidence in a class k != y [Stutz et al. ICML 2020].
+    """
+    step_size = 2 * eps / steps
+    x_orig = x.clone()
+    x.requires_grad = True
+
+    for _ in range(steps):
+        forecasts = model.forecast(model.forward(x)).probs
+        mask = 1 - torch.eye(forecasts.shape[1], device=x.device)[y] # take max over possible k != y
+        loss = torch.max(forecasts * mask, dim=1).values.mean()
+        grads = grad(loss, x, only_inputs=True)[0].reshape(x.shape[0], -1)
+        if adv == 1:
+            keep_vals = torch.kthvalue(grads.abs(), k=grads.shape[1] * 15 // 16, dim=1).values
+            grads[torch.abs(grads) < keep_vals.unsqueeze(1)] = 0
+            grads = torch.sign(grads)
+            grads_norm = torch.norm(grads, dim=1, p=1)
+            grads = grads / (grads_norm.unsqueeze(1) + 1e-8)
+        elif adv == 2:
+            grads_norm = torch.norm(grads, dim=1, p=2)
+            grads = grads / (grads_norm.unsqueeze(1) + 1e-8)
+        elif adv == float("inf"):
+            grads = torch.sign(grads)
+        else:
+            raise ValueError
+        diff = x + step_size * grads.reshape(x.shape) - x_orig
+        diff = project_onto_ball(diff, eps, adv)
+        x = (x_orig + diff).clamp(*clamp)
+
+    return x.detach()
+
+
 def pgd_attack(model, x, y, eps, steps=20, adv=float("inf"), clamp=(0., 1.)):
     """
     Attack a model with PGD [Madry et al. ICLR 2017].
@@ -65,6 +98,13 @@ def pgd_attack(model, x, y, eps, steps=20, adv=float("inf"), clamp=(0., 1.)):
     return x.detach()
 
 
+def spatial_attack(model, x, y, eps, steps=20, clamp=(0., 1.)):
+    """
+    Worst-of-K attack for translations and rotations [Engstrom et al. ICML 2019].
+    """
+    pass
+
+
 def fgsm_attack(model, x, y, eps, clamp=(0., 1.), alpha=1.):
     """
     FGSM attack for the L-inf adversary [Wong et al. ICLR 2020].
@@ -76,7 +116,7 @@ def fgsm_attack(model, x, y, eps, clamp=(0., 1.), alpha=1.):
     step_size = alpha * eps
     diff = (2. * torch.rand_like(x) - 1.) * eps
     diff.requires_grad = True
-    
+
     loss = model.loss(x + diff, y).mean()
     grads = grad(loss, diff, only_inputs=True)[0]
     diff = diff + step_size * torch.sign(grads)

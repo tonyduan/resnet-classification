@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+import scipy as sp
+import scipy.special
 import itertools
 from collections import defaultdict
 from matplotlib import pyplot as plt
@@ -84,6 +86,7 @@ def bootstrap_snapshot(q, p, p_logits, num_samples=100):
     bootstrap_df = pd.DataFrame(bootstrap_df)
     lower = {f"lower_{k}": v for k, v in bootstrap_df.quantile(q=0.025).to_dict().items()}
     upper = {f"upper_{k}": v for k, v in bootstrap_df.quantile(q=0.975).to_dict().items()}
+
     return {**lower, **upper}  # merges the two dictionaries
 
 
@@ -99,10 +102,14 @@ if __name__ == "__main__":
 
     # load snapshots
     logits = np.load(f"{args.output_dir}/{args.experiment_name}/logits.npy")
-    logits_adv = np.load(f"{args.output_dir}/{args.experiment_name}/logits_adv.npy")
-    p = np.load(f"{args.output_dir}/{args.experiment_name}/p.npy")
-    p_adv = np.load(f"{args.output_dir}/{args.experiment_name}/p_adv.npy")
+    logits_pgd = np.load(f"{args.output_dir}/{args.experiment_name}/logits_pgd.npy")
+    logits_max_conf = np.load(f"{args.output_dir}/{args.experiment_name}/logits_max_conf.npy")
+
+    temperatures = np.load(f"{args.output_dir}/{args.experiment_name}/temperatures.npy")
+    temperatures_labels = np.load(f"{args.output_dir}/{args.experiment_name}/temperatures_labels.npy")
+
     q = np.load(f"{args.output_dir}/{args.experiment_name}/q.npy")
+    p = sp.special.softmax(logits, axis=1)
     cams = np.load(f"{args.output_dir}/{args.experiment_name}/cams.npy")
     q_flat = q.argmax(axis=1)
 
@@ -110,27 +117,43 @@ if __name__ == "__main__":
     dataset = args.dataset if args.dataset else args.experiment_name.split("_")[0]
     label_names = get_label_names(dataset)
 
-    print(f"== Macro-averaged AUPRC: {average_precision_score(q, p, 'macro'):.3f}")
-    print(f"== Micro-averaged AUPRC: {average_precision_score(q, p, 'micro'):.3f}")
+    print(f"== Macro-averaged AUPRC: {average_precision_score(q, p, average='macro'):.3f}")
+    print(f"== Micro-averaged AUPRC: {average_precision_score(q, p, average='micro'):.3f}")
     print("== Per-class AUPRCs:")
     for label_id, label_name in enumerate(label_names):
         print(f"  {label_name}: {average_precision_score(q_flat == label_id, p[:, label_id]):.3f}")
 
-    # save post-hoc final report
-    eval_report = evaluate_snapshot(q, p, logits)
-    bootstrap_report = bootstrap_snapshot(q, p, logits)
-    adv_eval_report = evaluate_snapshot(q, p_adv, logits_adv)
-    adv_bootstrap_report = bootstrap_snapshot(q, p_adv, logits_adv)
-
     df = defaultdict(list)
 
-    for k, v in itertools.chain(eval_report.items(), bootstrap_report.items()):
-        df[k].append(v)
-        print(f"== {k}: {v:.3f}")
+    for T, T_label in zip(temperatures, temperatures_labels):
 
-    for k, v in itertools.chain(adv_eval_report.items(), adv_bootstrap_report.items()):
-        df[f"adv_{k}"].append(v)
-        print(f"== adv_{k}: {v:.3f}")
+        # scale by temperature
+        p = sp.special.softmax(logits / T, axis=1)
+        p_pgd = sp.special.softmax(logits_pgd / T, axis=1)
+        p_max_conf = sp.special.softmax(logits_max_conf / T, axis=1)
+
+        # save post-hoc final report
+        eval_report = evaluate_snapshot(q, p, logits / T)
+        bootstrap_report = bootstrap_snapshot(q, p, logits / T)
+        pgd_eval_report = evaluate_snapshot(q, p_pgd, logits_pgd / T)
+        pgd_bootstrap_report = bootstrap_snapshot(q, p_pgd, logits_pgd / T)
+        max_conf_eval_report = evaluate_snapshot(q, p_max_conf, logits_max_conf / T)
+        max_conf_bootstrap_report = bootstrap_snapshot(q, p_max_conf, logits_max_conf / T)
+
+        for k, v in itertools.chain(eval_report.items(), bootstrap_report.items()):
+            df[k].append(v)
+            print(f"== {k}: {v:.3f}")
+
+        for k, v in itertools.chain(pgd_eval_report.items(), pgd_bootstrap_report.items()):
+            df[f"pgd_{k}"].append(v)
+            print(f"== pgd_{k}: {v:.3f}")
+
+        for k, v in itertools.chain(max_conf_eval_report.items(), max_conf_bootstrap_report.items()):
+            df[f"max_conf_{k}"].append(v)
+            print(f"== max_conf_{k}: {v:.3f}")
+
+        df["temperature"].append(T)
+        df["temperature_label"].append(T_label)
 
     df = pd.DataFrame(df)
     df.to_csv(f"{args.output_dir}/{args.experiment_name}/eval_results.csv", index=False)
@@ -138,8 +161,8 @@ if __name__ == "__main__":
     if not args.save_examples:
         exit()
 
-    test_dataset = get_dataset(dataset, "test", precision="float")
     print("== Saving examples...")
+    test_dataset = get_dataset(dataset, "test", precision="float")
     plt.figure(figsize=(8, 4))
     for i in tqdm(range(args.num_images_saved)):
         plt.clf()

@@ -27,7 +27,7 @@ def temperature_scale(labels, logits):
         loss.backward()
         return loss
     optimizer.step(closure)
-    T = T.data.numpy().item()
+    T = np.asscalar(T.data.numpy())
     return T
 
 
