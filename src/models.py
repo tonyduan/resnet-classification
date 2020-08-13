@@ -165,10 +165,18 @@ class ResNet(Classifier):
         {"block": BasicBlockV2, "num_blocks": 4, "num_filters": 640}, # 640 x 8 x 8 output
     ]
 
-    def __init__(self, dataset, device, precision, layers_config=wrn_40_2_layers):
+    def __init__(self, dataset, device, precision, layers_config=wrn_40_2_layers,
+                 norm_layer="batch_norm"):
 
         super().__init__(dataset, device, precision)
         self.pre_activation = layers_config[0]["block"].pre_activation
+
+        if norm_layer == "batch_norm":
+            norm_layer = nn.BatchNorm2d
+        elif norm_layer == "group_norm":
+            norm_layer=lambda out_filters: nn.GroupNorm(out_filters // 16, out_filters)
+        else:
+            raise ValueError
 
         if dataset == "imagenet":
             num_filters = 64
@@ -179,7 +187,7 @@ class ResNet(Classifier):
             self.conv1 = nn.Conv2d(3, num_filters, kernel_size=3, stride=1, padding=1, bias=False)
             self.maxpool = nn.Identity()
 
-        self.bn_init = nn.BatchNorm2d(num_filters)
+        self.bn_init = norm_layer(num_filters)
         self.blocks = nn.ModuleList()
 
         for layer_no, config in enumerate(layers_config):
@@ -188,10 +196,11 @@ class ResNet(Classifier):
                 self.blocks.append(config["block"](in_filters=num_filters,
                                                    out_filters=config["num_filters"],
                                                    stride=stride,
+                                                   norm_layer=norm_layer,
                                                    **config))
                 num_filters = config["num_filters"]
 
-        self.bn_final = nn.BatchNorm2d(num_filters) if self.pre_activation else nn.Identity()
+        self.bn_final = norm_layer(num_filters) if self.pre_activation else nn.Identity()
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.flatten = nn.Flatten()
         self.linear = nn.Linear(num_filters, get_num_labels(dataset))
@@ -210,7 +219,7 @@ class ResNet(Classifier):
                 nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
+            elif isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.GroupNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 

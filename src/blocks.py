@@ -22,21 +22,21 @@ class BasicBlock(nn.Module):
     """
     pre_activation = False
 
-    def __init__(self, in_filters, out_filters, stride=1, se=False, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, se=False, norm_layer=nn.BatchNorm2d, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_filters)
+        self.bn1 = norm_layer(out_filters)
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
                                stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters)
+        self.bn2 = norm_layer(out_filters)
         self.se = SELayer(out_filters) if se else nn.Identity()
         if stride == 1 and in_filters == out_filters:
             self.shortcut = nn.Identity()
         else:
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
+                                          norm_layer(out_filters))
 
     def forward(self, x):
         out = self.conv1(x)
@@ -73,22 +73,23 @@ class Bottleneck(nn.Module):
     """
     pre_activation = False
 
-    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, groups=1, se=False, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, groups=1, se=False,
+                 norm_layer=nn.BatchNorm2d, **kwargs):
         super().__init__()
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_filters // squeeze)
+        self.bn1 = norm_layer(out_filters // squeeze)
         self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
                                stride=stride, padding=1, groups=groups, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
+        self.bn2 = norm_layer(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_filters)
+        self.bn3 = norm_layer(out_filters)
         self.se = SELayer(out_filters) if se else nn.Identity()
         if stride == 1 and in_filters == out_filters:
             self.shortcut = nn.Identity()
         else:
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
+                                          norm_layer(out_filters))
 
     def forward(self, x):
         out = self.conv1(x)
@@ -111,12 +112,12 @@ class BasicBlockV2(nn.Module):
     """
     pre_activation = True
 
-    def __init__(self, in_filters, out_filters, stride=1, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, norm_layer=nn.BatchNorm2d, **kwargs):
         super().__init__()
-        self.bn1 = nn.BatchNorm2d(in_filters)
+        self.bn1 = norm_layer(in_filters)
         self.conv1 = nn.Conv2d(in_filters, out_filters, kernel_size=3,
                                stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters)
+        self.bn2 = norm_layer(out_filters)
         self.conv2 = nn.Conv2d(out_filters, out_filters, kernel_size=3,
                                stride=1, padding=1, bias=False)
         if stride == 1 and in_filters == out_filters:
@@ -124,7 +125,7 @@ class BasicBlockV2(nn.Module):
         else:
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
+                                          norm_layer(out_filters))
 
     def forward(self, x):
         out = self.bn1(x)
@@ -143,21 +144,21 @@ class BottleneckV2(nn.Module):
     """
     pre_activation = True
 
-    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, **kwargs):
+    def __init__(self, in_filters, out_filters, stride=1, squeeze=4, norm_layer=nn.BatchNorm2d, **kwargs):
         super().__init__()
-        self.bn1 = nn.BatchNorm2d(in_filters)
+        self.bn1 = norm_layer(in_filters)
         self.conv1 = nn.Conv2d(in_filters, out_filters // squeeze, kernel_size=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(out_filters // squeeze)
+        self.bn2 = norm_layer(out_filters // squeeze)
         self.conv2 = nn.Conv2d(out_filters // squeeze, out_filters // squeeze, kernel_size=3,
                                stride=stride, padding=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_filters // squeeze)
+        self.bn3 = norm_layer(out_filters // squeeze)
         self.conv3 = nn.Conv2d(out_filters // squeeze, out_filters, kernel_size=1, bias=False)
         if stride == 1 and in_filters == out_filters:
             self.shortcut = nn.Identity()
         else:
             self.shortcut = nn.Sequential(nn.Conv2d(in_filters, out_filters, kernel_size=1,
                                                     stride=stride, bias=False),
-                                          nn.BatchNorm2d(out_filters))
+                                          norm_layer(out_filters))
 
     def forward(self, x):
         out = self.bn1(x)
