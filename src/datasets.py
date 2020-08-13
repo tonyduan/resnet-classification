@@ -3,7 +3,7 @@ import os
 import pickle
 from PIL import Image
 from torchvision import datasets, transforms
-from torch.utils.data import Dataset, Subset, DataLoader
+from torch.utils.data import Dataset, Subset, DataLoader, ConcatDataset
 from src.lib.zipdata import ZipData
 from src.utils import split_hold_out_set
 
@@ -75,7 +75,7 @@ def get_normalization_shape(name):
 
 
 def get_normalization_stats(name):
-    if name == "cifar" or name == "cifar100":
+    if name.startswith("cifar"):
         return {"mu": [0.4914, 0.4822, 0.4465], "sigma": [0.2023, 0.1994, 0.2010]}
     if name == "imagenet" or name == "ds-imagenet":
         return {"mu": [0.485, 0.456, 0.406], "sigma": [0.229, 0.224, 0.225]}
@@ -193,6 +193,22 @@ def get_dataset(name, split, precision):
         return datasets.SVHN("./data/svhn", split=split, download=True,
                              transform=transforms.Compose([transforms.ToTensor(),
                                                            precision_transform]))
+
+    if name == "cifar10selftrained" and split == "base":
+        return CIFAR10SelfTrained("/mnt/vlgrounding/cifar10_selftrained/ti_500K_pseudo_labeled.pickle",
+                                  transform=transforms.Compose([transforms.RandomCrop(32, padding=4),
+                                                                transforms.RandomHorizontalFlip(),
+                                                                transforms.ToTensor(),
+                                                                precision_transform]))
+
+    if name == "cifar10selftrained" and split == "train":
+        return ConcatDataset([get_dataset("cifar10selftrained", split="base", precision=precision),
+                              get_dataset("cifar", split="train", precision=precision)])
+    if name == "cifar10selftrained" and split == "train_train":
+        return ConcatDataset([get_dataset("cifar10selftrained", split="base", precision=precision),
+                              get_dataset("cifar", split="train_train", precision=precision)])
+    if name == "cifar10selftrained" and split == "train_val":
+        return get_dataset("cifar", split="train_val", precision=precision)
 
     raise ValueError
 
