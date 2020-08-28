@@ -30,12 +30,22 @@ if __name__ == "__main__":
         df["experiment"].extend(["_".join(experiment_name.split("_")[1:])] * len(v))
 
     df = pd.DataFrame(df)
-    df.to_csv(f"{args.dir}/posthoc_tables.csv")
 
-    acc_df = df >> select(X.experiment, X.temperature_label, X.temperature, X.lower_acc, X.upper_acc, X.pgd_upper_acc, X.max_conf_upper_acc) \
+    df = df >> mask(X.experiment.str.endswith("0.0"))
+    df >> arrange(X.lower_acc, ascending=False)
+    best_experiment = (df >> arrange(X.lower_acc, ascending=False))["experiment"].iloc[0]
+    df = df >> mask(X.experiment == best_experiment)
+
+    acc_df = df >> select(X.experiment, X.temperature_label, X.temperature, X.acc, X.lower_acc, X.upper_acc, X.pgd_acc, X.pgd_lower_acc, X.pgd_upper_acc) \
                 >> arrange(X.temperature_label, X.experiment)
-    ece_df = df >> select(X.experiment, X.temperature_label, X.temperature, X.lower_toplabel_ece, X.upper_toplabel_ece, X.pgd_upper_toplabel_ece, X.max_conf_upper_toplabel_ece) \
+    ece_df = df >> select(X.experiment, X.temperature_label,  X.toplabel_ece, X.lower_toplabel_ece, X.upper_toplabel_ece, X.pgd_toplabel_ece, X.pgd_lower_toplabel_ece, X.pgd_upper_toplabel_ece) \
                 >> arrange(X.temperature_label, X.experiment)
+    cece_df = df >> select(X.experiment, X.temperature_label, X.lower_consistency_toplabel_ece, X.upper_consistency_toplabel_ece) \
+                 >> arrange(X.temperature_label, X.experiment)
     print(acc_df.round(decimals=3))
     print(ece_df.round(decimals=3))
+    print(cece_df.round(decimals=3))
+    cece_df = df >> select(X.experiment, X.temperature_label, X.pgd_lower_consistency_toplabel_ece, X.pgd_upper_consistency_toplabel_ece) \
+                 >> arrange(X.temperature_label, X.experiment)
+    print(cece_df.round(decimals=3))
 

@@ -69,7 +69,7 @@ def max_conf_attack(model, x, y, eps, steps=20, adv=float("inf"), clamp=(0., 1.)
 
 def pgd_attack(model, x, y, eps, steps=20, adv=float("inf"), clamp=(0., 1.)):
     """
-    Attack a model with PGD [Madry et al. ICLR 2017].
+    Attack a model with PGD [Madry et al. ICLR 2018].
     """
     step_size = 2 * eps / steps
     x_orig = x.clone()

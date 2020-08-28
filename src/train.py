@@ -42,6 +42,7 @@ if __name__ == "__main__":
     argparser.add_argument("--weight-decay", default=1e-4, type=float)
     argparser.add_argument("--data-parallel", action="store_true")
     argparser.add_argument("--use-val-set", action="store_true")
+    argparser.add_argument("--focal", action="store_true")
     argparser.add_argument('--output-dir', type=str, default=os.getenv("PT_OUTPUT_DIR"))
     args = argparser.parse_args()
 
@@ -49,7 +50,7 @@ if __name__ == "__main__":
     logger = logging.getLogger(__name__)
 
     model = eval(args.model)(dataset=args.dataset, device=args.device, precision=args.precision,
-                             norm_layer=args.norm_layer)
+                             norm_layer=args.norm_layer, focal=args.focal)
     model = DataParallelWrapper(model) if args.data_parallel else model
 
     if not args.use_val_set:

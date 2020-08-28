@@ -17,6 +17,7 @@ class Classifier(nn.Module):
                                    **get_normalization_stats(dataset))
         self.device = device
         self.precision = precision
+        self.focal = False
 
     def initialize_weights(self):
         raise NotImplementedError
@@ -39,7 +40,11 @@ class Classifier(nn.Module):
 
     def loss(self, x, y, sample_weights=None):
         forecast = self.forecast(self.forward(x))
-        nll = -forecast.log_prob(y)
+        if self.focal:
+            p = torch.gather(forecast.probs, 1, y.unsqueeze(1)).squeeze()
+            nll = -forecast.log_prob(y) * (1 - p) ** 3.0
+        else:
+            nll = -forecast.log_prob(y)
         return nll * sample_weights if sample_weights is not None else nll
 
     def brier_loss(self, x, y, sample_weights=None):
@@ -166,10 +171,11 @@ class ResNet(Classifier):
     ]
 
     def __init__(self, dataset, device, precision, layers_config=wrn_40_2_layers,
-                 norm_layer="batch_norm"):
+                 norm_layer="batch_norm", focal=False):
 
         super().__init__(dataset, device, precision)
         self.pre_activation = layers_config[0]["block"].pre_activation
+        self.focal = focal
 
         if norm_layer == "batch_norm":
             norm_layer = nn.BatchNorm2d

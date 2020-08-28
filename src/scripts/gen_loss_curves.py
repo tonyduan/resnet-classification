@@ -27,18 +27,13 @@ if __name__ == "__main__":
     for experiment_name in experiment_names:
 
         experiment_df = pd.read_csv(f"{args.dir}/{experiment_name}/results.csv")
+
         for split, adv, interval, key in itertools.product(("train", "test"), ("", "_adv") if args.adv else ("",),
-                                                           ("lower", "upper"),
-                                                           ("nll", "acc", "toplabel_ece", "consistency_toplabel_ece")):
 
             if interval == "":
                 col = f"{split}{adv}_{key}"
             else:
                 col = f"{split}{adv}_{interval}_{key}"
-
-            adv = "none" if adv == "" else "pgd"
-            df["adv"].extend([adv] * len(experiment_df))
-            df["experiment"].extend(["_".join(experiment_name.split("_")[1:])] * len(experiment_df))
             df["interval"].extend([interval] * len(experiment_df))
             df["split"].extend([split] * len(experiment_df))
             df["key"].extend([key] * len(experiment_df))
